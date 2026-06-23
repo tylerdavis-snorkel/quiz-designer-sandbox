@@ -36,6 +36,7 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - No email notifications.
 - Admins can export CSV from the dashboard, then open a specific attempt to enable a retake, lock/unlock, change the result, or save an internal note.
 - Admins can sort quiz responses by most recent or oldest attempt date.
+- Admin metrics can be viewed across all quizzes or switched to one quiz at a time.
 - Failed and pending contributor history rows open a read-only history popup.
 - The Admin dashboard has inner tabs for quiz responses and written scoring.
 - Written long-text responses requiring admin scoring can be reviewed and scored from the Written scoring tab.

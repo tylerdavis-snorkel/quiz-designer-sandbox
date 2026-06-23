@@ -380,6 +380,7 @@ let filters = {
   score: "All",
   cohort: "All",
   responseSort: "Most recent",
+  metricQuiz: "All",
   offboardingSearch: ""
 };
 
@@ -975,30 +976,41 @@ function renderContributorHistoryDetail() {
 }
 
 function renderAdmin() {
+  if (filters.metricQuiz !== "All" && !quiz(filters.metricQuiz)) filters.metricQuiz = "All";
   const rows = filteredAdminRows();
   const stats = adminStats();
+  const metricTitle = filters.metricQuiz === "All" ? "All quizzes" : quiz(filters.metricQuiz)?.title || "All quizzes";
   return `
     <section class="content">
+      <div class="metrics-toolbar">
+        <div>
+          <h1 class="section-title">Metrics</h1>
+          <div class="section-kicker">${escapeHtml(metricTitle)}</div>
+        </div>
+        <div class="field metric-select">
+          <label for="metric-quiz">Quiz</label>
+          <select id="metric-quiz" class="select" data-filter="metricQuiz">
+            <option>All</option>
+            ${state.quizzes.map((itemQuiz) => `<option value="${itemQuiz.id}" ${filters.metricQuiz === itemQuiz.id ? "selected" : ""}>${escapeHtml(itemQuiz.title)}</option>`).join("")}
+          </select>
+        </div>
+      </div>
       <div class="stat-grid">
         <div class="stat">
           <div class="stat-label">Passed</div>
           <div class="stat-value">${stats.passed}</div>
-          <div class="stat-note">Passed latest attempt</div>
         </div>
         <div class="stat">
           <div class="stat-label">Failed</div>
           <div class="stat-value">${stats.failed}</div>
-          <div class="stat-note">Failed latest attempt</div>
         </div>
         <div class="stat">
           <div class="stat-label">In progress</div>
           <div class="stat-value">${stats.inProgress}</div>
-          <div class="stat-note">Pause/resume enabled</div>
         </div>
         <div class="stat">
           <div class="stat-label">Not started</div>
           <div class="stat-value">${stats.notStarted}</div>
-          <div class="stat-note">Assigned, no attempt yet</div>
         </div>
       </div>
       ${renderAdminSubTabs()}
@@ -1246,10 +1258,13 @@ function renderMakeAdminModal() {
 }
 
 function adminStats() {
-  const allRows = state.assignments.map((item) => ({ item, status: adminStatus(item), latest: latestAttempt(item.contributorId, item.quizId) }));
+  const quizId = filters.metricQuiz;
+  const assignments = state.assignments.filter((item) => quizId === "All" || item.quizId === quizId);
+  const attempts = state.attempts.filter((attempt) => quizId === "All" || attempt.quizId === quizId);
+  const allRows = assignments.map((item) => ({ item, status: adminStatus(item), latest: latestAttempt(item.contributorId, item.quizId) }));
   return {
-    passed: allRows.filter((row) => row.status === "Passed").length,
-    failed: allRows.filter((row) => row.status === "Failed").length,
+    passed: attempts.filter((attempt) => attempt.status === "Passed").length,
+    failed: attempts.filter((attempt) => attempt.status === "Failed").length,
     inProgress: allRows.filter((row) => row.status === "In progress").length,
     notStarted: allRows.filter((row) => row.status === "Not started").length
   };
