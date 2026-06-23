@@ -592,6 +592,66 @@ tr:last-child td {
   flex-wrap: wrap;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  padding: 26px;
+  background: rgba(12, 19, 32, 0.48);
+  display: grid;
+  place-items: center;
+}
+
+.modal-card {
+  width: min(1120px, 100%);
+  max-height: min(760px, calc(100vh - 52px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(9, 18, 33, 0.32);
+}
+
+.modal-card.compact {
+  width: min(520px, 100%);
+}
+
+.modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modal-body {
+  padding: 18px 20px 20px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 9px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  padding: 0 20px 20px;
+}
+
+.modal-actions.top {
+  padding: 0 0 16px;
+  justify-content: flex-start;
+}
+
+.helper-text {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
 .split {
   display: grid;
   grid-template-columns: minmax(300px, 0.86fr) minmax(0, 1.14fr);

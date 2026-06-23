@@ -324,6 +324,7 @@ let view = "contributor";
 let selectedQuizId = state.selectedQuizId || state.quizzes[0].id;
 let editorMode = "home";
 let selectedAttemptId = null;
+let makeAdminOpen = false;
 let selectedAssignments = new Set();
 let draggedContentKey = null;
 let imageViewer = null;
@@ -360,6 +361,7 @@ function resetState() {
   selectedQuizId = state.selectedQuizId;
   editorMode = "home";
   selectedAttemptId = null;
+  makeAdminOpen = false;
   selectedAssignments = new Set();
   session = null;
   resultSnapshot = null;
@@ -524,6 +526,11 @@ function assignment(id) {
   return byId(state.assignments, id);
 }
 
+function assignmentForAttempt(attempt) {
+  if (!attempt) return null;
+  return state.assignments.find((item) => item.contributorId === attempt.contributorId && item.quizId === attempt.quizId) || null;
+}
+
 function latestAttempt(contributorId, quizId) {
   return state.attempts
     .filter((attempt) => attempt.contributorId === contributorId && attempt.quizId === quizId)
@@ -656,7 +663,7 @@ function renderShell(content) {
         </nav>
         <div class="sandbox-box">
           <strong>Sandbox</strong><br>
-          ${isAdmin(current) ? "Admin account: use Admin access to promote other accounts." : "Contributor account: only the Contributor tab is visible. Switch to Maya or Jordan to test admin tools."}
+          ${isAdmin(current) ? "Admin account: use Make admin to promote accounts by email." : "Contributor account: only the Contributor tab is visible. Switch to Maya or Jordan to test admin tools."}
         </div>
       </aside>
       <main class="main">
@@ -857,13 +864,11 @@ function renderAdmin() {
         <div class="panel-header">
           <div>
             <h1 class="section-title">Contributor controls</h1>
-            <div class="section-kicker">Contributor-first view with filters, bulk actions, CSV export, and row controls.</div>
+            <div class="section-kicker">Contributor-first view with filters, CSV export, and attempt review.</div>
           </div>
           <div class="row-actions">
-            <button class="button secondary" data-action="bulk-retake">Allow retake</button>
-            <button class="button secondary" data-action="bulk-lock">Lock</button>
-            <button class="button secondary" data-action="bulk-offboard">Offboard</button>
             <button class="button" data-action="export-csv">Export CSV</button>
+            <button class="button secondary" data-action="open-make-admin">Make admin</button>
           </div>
         </div>
         <div class="panel-body">
@@ -872,8 +877,6 @@ function renderAdmin() {
           ${renderAdminTable(rows)}
         </div>
       </div>
-      ${renderAttemptDetail()}
-      ${renderAdminAccessPanel()}
       <div class="panel">
         <div class="panel-header">
           <div>
@@ -892,52 +895,33 @@ function renderAdmin() {
           </div>
         </div>
       </div>
+      ${renderAttemptDetail()}
+      ${makeAdminOpen ? renderMakeAdminModal() : ""}
     </section>
   `;
 }
 
-function renderAdminAccessPanel() {
-  const current = currentUser();
+function renderMakeAdminModal() {
   return `
-    <div class="panel">
-      <div class="panel-header">
+    <div class="modal-backdrop" data-modal-backdrop="make-admin">
+      <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="make-admin-title">
+        <div class="modal-header">
         <div>
-          <h2 class="section-title small">Admin access</h2>
-          <div class="section-kicker">Admins can promote other accounts to admin or return them to contributor access.</div>
+            <h2 id="make-admin-title" class="section-title small">Make admin</h2>
+            <div class="section-kicker">Type the account email that should receive admin access.</div>
         </div>
+          <button class="button ghost" data-action="close-make-admin">Close</button>
       </div>
-      <div class="panel-body">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Current role</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${state.contributors.filter((person) => !person.offboarded).map((person) => {
-                const personIsAdmin = isAdmin(person);
-                const isSelf = person.id === current.id;
-                return `
-                  <tr>
-                    <td><div class="cell-title">${escapeHtml(person.name)}</div><div class="cell-sub">${escapeHtml(person.cohort)}</div></td>
-                    <td>${escapeHtml(person.email)}</td>
-                    <td><span class="status ${personIsAdmin ? "passed" : "not-started"}">${personIsAdmin ? "Admin" : "Contributor"}</span></td>
-                    <td>
-                      ${personIsAdmin ? `
-                        <button class="button small secondary" data-action="set-role" data-contributor-id="${person.id}" data-role="contributor" ${isSelf ? "disabled" : ""}>Remove admin</button>
-                      ` : `
-                        <button class="button small" data-action="set-role" data-contributor-id="${person.id}" data-role="admin">Make admin</button>
-                      `}
-                    </td>
-                  </tr>
-                `;
-              }).join("")}
-            </tbody>
-          </table>
+        <div class="modal-body">
+          <div class="field">
+            <label for="make-admin-email">Email</label>
+            <input id="make-admin-email" class="input" data-make-admin-email placeholder="name@example.com" autocomplete="off">
+          </div>
+          <div class="helper-text">In this sandbox, the email can match an existing sample account or create a new invited admin account.</div>
+        </div>
+        <div class="modal-actions">
+          <button class="button secondary" data-action="close-make-admin">Cancel</button>
+          <button class="button" data-action="make-admin-by-email">Make admin</button>
         </div>
       </div>
     </div>
@@ -1022,7 +1006,6 @@ function renderAdminTable(rows) {
       <table>
         <thead>
           <tr>
-            <th><input type="checkbox" data-action="select-all" ${rows.length && rows.every((row) => selectedAssignments.has(row.item.id)) ? "checked" : ""}></th>
             <th>Contributor</th>
             <th>Quiz</th>
             <th>Status</th>
@@ -1035,7 +1018,6 @@ function renderAdminTable(rows) {
         <tbody>
           ${rows.map((row) => `
             <tr>
-              <td><input type="checkbox" data-action="select-assignment" data-assignment-id="${row.item.id}" ${selectedAssignments.has(row.item.id) ? "checked" : ""}></td>
               <td>
                 <div class="cell-title">${escapeHtml(row.person.name)}</div>
                 <div class="cell-sub">${escapeHtml(row.person.email)} - ${escapeHtml(row.person.cohort)}</div>
@@ -1051,10 +1033,6 @@ function renderAdminTable(rows) {
               <td>
                 <div class="row-actions">
                   <button class="button small secondary" data-action="view-attempt" data-attempt-id="${row.latest ? row.latest.id : ""}" ${row.latest ? "" : "disabled"}>View attempt</button>
-                  <button class="button small secondary" data-action="allow-retake" data-assignment-id="${row.item.id}">Allow retake</button>
-                  <button class="button small secondary" data-action="toggle-lock" data-assignment-id="${row.item.id}">${row.item.locked ? "Unlock" : "Lock"}</button>
-                  <button class="button small secondary" data-action="offboard" data-assignment-id="${row.item.id}">${row.item.offboarded ? "Restore" : "Offboard"}</button>
-                  <button class="button small secondary" data-action="change-result" data-assignment-id="${row.item.id}" ${row.latest ? "" : "disabled"}>Change result</button>
                 </div>
               </td>
             </tr>
@@ -1071,16 +1049,26 @@ function renderAttemptDetail() {
   if (!attempt) return "";
   const person = contributor(attempt.contributorId);
   const itemQuiz = quiz(attempt.quizId);
+  const item = assignmentForAttempt(attempt);
   return `
-    <div class="panel modal-like">
-      <div class="panel-header">
+    <div class="modal-backdrop" data-modal-backdrop="attempt">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="attempt-detail-title">
+        <div class="modal-header">
         <div>
-          <h2 class="section-title small">Attempt detail</h2>
+            <h2 id="attempt-detail-title" class="section-title small">Attempt detail</h2>
           <div class="section-kicker">${escapeHtml(person.email)} - ${escapeHtml(itemQuiz.title)}</div>
         </div>
         <button class="button ghost" data-action="close-attempt">Close</button>
       </div>
-      <div class="panel-body">
+        <div class="modal-body">
+          ${item ? `
+            <div class="modal-actions top">
+              <button class="button secondary" data-action="allow-retake" data-assignment-id="${item.id}">Allow retake</button>
+              <button class="button secondary" data-action="toggle-lock" data-assignment-id="${item.id}">${item.locked ? "Unlock" : "Lock"}</button>
+              <button class="button secondary" data-action="offboard" data-assignment-id="${item.id}">${item.offboarded ? "Restore" : "Offboard"}</button>
+              <button class="button secondary" data-action="change-result" data-assignment-id="${item.id}" ${attempt.status === "In progress" ? "disabled" : ""}>Change result</button>
+            </div>
+          ` : ""}
         <div class="stat-grid">
           <div class="stat">
             <div class="stat-label">Status</div>
@@ -1136,6 +1124,7 @@ function renderAttemptDetail() {
         </div>
         <div style="height: 10px;"></div>
         <button class="button secondary" data-action="save-note" data-attempt-id="${attempt.id}">Save note</button>
+        </div>
       </div>
     </div>
   `;
@@ -1233,9 +1222,6 @@ function renderEditorHome() {
                     <span class="status ${itemQuiz.draftDirty ? "retake-available" : "locked"}" data-dirty-badge="${itemQuiz.id}">${itemQuiz.draftDirty ? "Unpublished changes" : "No unpublished changes"}</span>
                     <span class="status ${assignmentCountForQuiz(itemQuiz.id) ? "qualified" : "locked"}">${assignmentCountForQuiz(itemQuiz.id) ? "On dashboards" : "Not on dashboards"}</span>
                   </div>
-                </div>
-                <div class="quiz-card-body">
-                  ${itemQuiz.coursePages.length} course pages - ${itemQuiz.questions.length} questions - ${assignmentCountForQuiz(itemQuiz.id)} assigned contributors
                 </div>
                 <div class="quiz-card-actions">
                   <button class="button" data-action="edit-quiz" data-quiz-id="${itemQuiz.id}">Edit quiz</button>
@@ -2224,10 +2210,26 @@ function ensureContributorByEmail(email) {
     name: "Invited contributor",
     email,
     cohort: "Email allowlist",
+    role: "contributor",
     offboarded: false
   };
   state.contributors.push(person);
   return person;
+}
+
+function makeAdminByEmail() {
+  const input = document.querySelector("[data-make-admin-email]");
+  const email = parseEmailList(input?.value || "")[0];
+  if (!email) {
+    alert("Enter a valid email address.");
+    return;
+  }
+  const person = ensureContributorByEmail(email);
+  person.role = "admin";
+  person.offboarded = false;
+  makeAdminOpen = false;
+  addAudit("Admin access granted", person.email);
+  render();
 }
 
 function emailListForQuiz(quizId) {
@@ -2446,11 +2448,25 @@ function removeQuestionImage(quizId, questionId, imageId) {
 }
 
 function handleClick(event) {
+  if (event.target.dataset.modalBackdrop === "attempt") {
+    selectedAttemptId = null;
+    render();
+    return;
+  }
+  if (event.target.dataset.modalBackdrop === "make-admin") {
+    makeAdminOpen = false;
+    render();
+    return;
+  }
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
   if (action === "nav") {
     if (!isAdmin() && button.dataset.view !== "contributor") return;
+    if (button.dataset.view !== view) {
+      selectedAttemptId = null;
+      makeAdminOpen = false;
+    }
     view = button.dataset.view;
     if (view === "editor") editorMode = "home";
     render();
@@ -2515,6 +2531,17 @@ function handleClick(event) {
   if (action === "close-attempt") {
     selectedAttemptId = null;
     render();
+  }
+  if (action === "open-make-admin") {
+    makeAdminOpen = true;
+    render();
+  }
+  if (action === "close-make-admin") {
+    makeAdminOpen = false;
+    render();
+  }
+  if (action === "make-admin-by-email") {
+    makeAdminByEmail();
   }
   if (action === "allow-retake") {
     allowRetake(button.dataset.assignmentId);
@@ -2749,6 +2776,8 @@ function handleChange(event) {
   const target = event.target;
   if (target.dataset.action === "switch-contributor") {
     state.currentContributorId = target.value;
+    selectedAttemptId = null;
+    makeAdminOpen = false;
     render();
   }
   if (target.dataset.action === "select-editor-quiz") {

@@ -27,14 +27,14 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - Contributors are contractors.
 - Contributors self-sign in through an external platform identity later, likely GitHub or the parent platform.
 - Offboarded contributors keep read-only quiz history.
-- Contributor statuses: Not started, In progress, Submitted, Passed, Failed, Retake available, Locked, Project inactive.
+- Contributor-facing statuses include Not started, In progress, Passed, Failed, Retake available, Locked, and Project inactive.
 - Admin-facing progress statuses are Passed, Failed, In progress, and Not started.
 - Scores decide pass/fail automatically unless an admin overrides.
 - Open long-text questions can land in Submitted until admin scoring is complete.
 - Contributors see exact score and pass/fail, but not missed questions.
 - Hints appear during testing and do not reduce score.
 - No email notifications.
-- Admins can view attempts, enable retakes, lock quizzes, offboard contributors, change results, export CSV, and use bulk actions.
+- Admins can export CSV from the dashboard, then open a specific attempt to enable a retake, lock/unlock, offboard/restore, change the result, or save an internal note.
 - Audit logs are shown for admin changes.
 - Quizzes require a Google Docs guidelines link.
 - The quiz editor starts with "create a new quiz or choose an existing quiz."
@@ -51,7 +51,7 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - In the sandbox, emails are sample data or pasted allowlist entries. In production, contributor emails should come from verified sign-in identity and/or the project roster.
 - Admin contributor filters focus on qualification/progress statuses instead of operational states like locked/offboarded/project inactive.
 - The sandbox includes admin and contributor accounts. Contributors only see the Contributor tab.
-- Admins can grant or remove admin access for other active accounts from the Admin dashboard.
+- Admins can grant admin access by typing an email from the Admin dashboard.
 - Question and answer order can be randomized per attempt.
 - Reports show canonical answer text, not A/B/C/D.
 - Active quiz time excludes pauses.
