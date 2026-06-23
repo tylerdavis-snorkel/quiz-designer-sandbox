@@ -684,7 +684,7 @@ function renderContributor() {
   return `
     <section class="content narrow">
       <div class="hero-panel">
-        <div class="panel builder-panel">
+        <div class="panel">
           <div class="panel-header">
             <div>
               <h1 class="section-title">Required quizzes</h1>
@@ -1215,7 +1215,7 @@ function editorToggle(label, field, enabled) {
 
 function renderAssignmentPanel(itemQuiz) {
   const canAssign = itemQuiz.status === "Published" && !itemQuiz.draftDirty;
-  const assignedIds = new Set(state.assignments.filter((item) => item.quizId === itemQuiz.id && !item.offboarded).map((item) => item.contributorId));
+  const assignedPeople = assignedContributorsForQuiz(itemQuiz.id);
   return `
     <div class="panel assignment-panel">
       <div class="panel-header">
@@ -1228,26 +1228,32 @@ function renderAssignmentPanel(itemQuiz) {
         <div class="publish-note">
           <div class="strong">${canAssign ? "Ready to assign" : "Publish content first"}</div>
           <div class="cell-sub">${canAssign ? "Assigning makes the quiz appear under Required quizzes." : "Unpublished changes are not pushed to dashboards."}</div>
+          <div class="cell-sub">Emails come from the signed-in contributor roster or from this allowlist for people who have not signed in yet.</div>
         </div>
         <div style="height: 12px;"></div>
         <button class="button" data-action="assign-all" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Push to all contributors</button>
         <div style="height: 14px;"></div>
-        <div class="assignment-list">
-          ${state.contributors.filter((person) => !person.offboarded).map((person) => `
-            <label class="assignment-row">
-              <input type="checkbox" data-assign-email="${itemQuiz.id}" value="${person.id}" ${assignedIds.has(person.id) ? "checked" : ""} ${canAssign ? "" : "disabled"}>
+        <div class="field">
+          <label>Assign only these emails</label>
+          <textarea class="textarea assignment-textarea" data-assign-email-list="${itemQuiz.id}" placeholder="Paste emails, separated by commas or new lines" ${canAssign ? "" : "disabled"}></textarea>
+        </div>
+        <div style="height: 12px;"></div>
+        <div class="row-actions">
+          <button class="button secondary" data-action="assign-listed-emails" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Assign pasted emails</button>
+          <button class="button ghost" data-action="clear-assignments" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Clear assignments</button>
+        </div>
+        <div style="height: 14px;"></div>
+        <div class="strong">Currently assigned</div>
+        <div class="assignment-list compact">
+          ${assignedPeople.length ? assignedPeople.map((person) => `
+            <div class="assignment-row">
               <span>
                 <span class="strong">${escapeHtml(person.name)}</span>
                 <span class="cell-sub">${escapeHtml(person.email)}</span>
               </span>
-              <span class="status ${assignedIds.has(person.id) ? "qualified" : "locked"}">${assignedIds.has(person.id) ? "Assigned" : "Not assigned"}</span>
-            </label>
-          `).join("")}
-        </div>
-        <div style="height: 12px;"></div>
-        <div class="row-actions">
-          <button class="button secondary" data-action="assign-selected" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Assign selected emails</button>
-          <button class="button ghost" data-action="unassign-unchecked" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Remove unchecked</button>
+              <button class="button small ghost" data-action="remove-assignment" data-quiz-id="${itemQuiz.id}" data-contributor-id="${person.id}">Remove</button>
+            </div>
+          `).join("") : `<div class="empty-state compact-empty">This quiz is not on any contributor dashboards yet.</div>`}
         </div>
       </div>
     </div>
@@ -2095,6 +2101,14 @@ function assignmentCountForQuiz(quizId) {
   return state.assignments.filter((item) => item.quizId === quizId && !item.offboarded).length;
 }
 
+function assignedContributorsForQuiz(quizId) {
+  return state.assignments
+    .filter((item) => item.quizId === quizId && !item.offboarded)
+    .map((item) => contributor(item.contributorId))
+    .filter(Boolean)
+    .sort((a, b) => a.email.localeCompare(b.email));
+}
+
 function ensureAssignment(contributorId, quizId) {
   let item = state.assignments.find((candidate) => candidate.contributorId === contributorId && candidate.quizId === quizId);
   if (item) {
@@ -2124,25 +2138,57 @@ function assignQuizToAll(quizId) {
   render();
 }
 
-function selectedContributorIdsForQuiz(quizId) {
-  return [...document.querySelectorAll(`[data-assign-email="${quizId}"]:checked`)].map((input) => input.value);
+function parseEmailList(value) {
+  return [...new Set(String(value || "")
+    .split(/[\s,;]+/)
+    .map((email) => email.trim().toLowerCase())
+    .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))];
 }
 
-function assignQuizToSelected(quizId) {
+function contributorForEmail(email) {
+  return state.contributors.find((person) => person.email.toLowerCase() === email.toLowerCase());
+}
+
+function ensureContributorByEmail(email) {
+  let person = contributorForEmail(email);
+  if (person) return person;
+  person = {
+    id: `c-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: "Invited contributor",
+    email,
+    cohort: "Email allowlist",
+    offboarded: false
+  };
+  state.contributors.push(person);
+  return person;
+}
+
+function emailListForQuiz(quizId) {
+  const input = document.querySelector(`[data-assign-email-list="${quizId}"]`);
+  return parseEmailList(input?.value || "");
+}
+
+function assignQuizToEmailList(quizId) {
   const itemQuiz = quiz(quizId);
   if (!canAssignQuiz(itemQuiz)) return;
-  const ids = selectedContributorIdsForQuiz(quizId);
-  ids.forEach((id) => ensureAssignment(id, quizId));
-  addAudit("Quiz assigned to selected emails", `${itemQuiz.title} - ${ids.length} contributor${ids.length === 1 ? "" : "s"}`);
+  const emails = emailListForQuiz(quizId);
+  emails.forEach((email) => ensureAssignment(ensureContributorByEmail(email).id, quizId));
+  addAudit("Quiz assigned by email allowlist", `${itemQuiz.title} - ${emails.length} email${emails.length === 1 ? "" : "s"}`);
   render();
 }
 
-function unassignUnchecked(quizId) {
+function clearQuizAssignments(quizId) {
   const itemQuiz = quiz(quizId);
   if (!canAssignQuiz(itemQuiz)) return;
-  const selected = new Set(selectedContributorIdsForQuiz(quizId));
-  state.assignments = state.assignments.filter((item) => item.quizId !== quizId || selected.has(item.contributorId));
-  addAudit("Quiz dashboard assignment updated", itemQuiz.title);
+  state.assignments = state.assignments.filter((item) => item.quizId !== quizId);
+  addAudit("Quiz removed from dashboards", itemQuiz.title);
+  render();
+}
+
+function removeQuizAssignment(quizId, contributorId) {
+  const itemQuiz = quiz(quizId);
+  state.assignments = state.assignments.filter((item) => !(item.quizId === quizId && item.contributorId === contributorId));
+  addAudit("Quiz assignment removed", `${itemQuiz.title} - ${contributor(contributorId)?.email || contributorId}`);
   render();
 }
 
@@ -2476,11 +2522,14 @@ function handleClick(event) {
   if (action === "assign-all") {
     assignQuizToAll(button.dataset.quizId);
   }
-  if (action === "assign-selected") {
-    assignQuizToSelected(button.dataset.quizId);
+  if (action === "assign-listed-emails") {
+    assignQuizToEmailList(button.dataset.quizId);
   }
-  if (action === "unassign-unchecked") {
-    unassignUnchecked(button.dataset.quizId);
+  if (action === "clear-assignments") {
+    clearQuizAssignments(button.dataset.quizId);
+  }
+  if (action === "remove-assignment") {
+    removeQuizAssignment(button.dataset.quizId, button.dataset.contributorId);
   }
   if (action === "toggle-editor") {
     const itemQuiz = quiz(selectedQuizId);

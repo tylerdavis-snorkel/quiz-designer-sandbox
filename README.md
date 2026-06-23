@@ -47,7 +47,8 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - Question resource images are viewed one at a time with previous/next controls.
 - Preview mode has a direct Back to editor action.
 - Publishing content is separate from dashboard assignment.
-- Admins can push a published quiz to all contributor dashboards or assign it only to selected emails.
+- Admins can push a published quiz to all contributor dashboards or assign it only to pasted emails.
+- In the sandbox, emails are sample data or pasted allowlist entries. In production, contributor emails should come from verified sign-in identity and/or the project roster.
 - Admin contributor filters focus on qualification/progress statuses instead of operational states like locked/offboarded/project inactive.
 - Question and answer order can be randomized per attempt.
 - Reports show canonical answer text, not A/B/C/D.
