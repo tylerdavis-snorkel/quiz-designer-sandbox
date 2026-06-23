@@ -44,6 +44,11 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - Questions, question types, hints, weights, answers, and correct answers can be edited inline.
 - Course pages have a rich text editor with bold, italic, underline, lists, fonts, colors, and inline image upload.
 - Questions support uploaded resource images. Contributors open these through a View images button while taking the quiz.
+- Question resource images are viewed one at a time with previous/next controls.
+- Preview mode has a direct Back to editor action.
+- Publishing content is separate from dashboard assignment.
+- Admins can push a published quiz to all contributor dashboards or assign it only to selected emails.
+- Admin contributor filters focus on qualification/progress statuses instead of operational states like locked/offboarded/project inactive.
 - Question and answer order can be randomized per attempt.
 - Reports show canonical answer text, not A/B/C/D.
 - Active quiz time excludes pauses.

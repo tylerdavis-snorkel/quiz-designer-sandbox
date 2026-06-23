@@ -327,6 +327,7 @@ let selectedAttemptId = null;
 let selectedAssignments = new Set();
 let draggedContentKey = null;
 let imageViewer = null;
+let previewReturn = null;
 let session = null;
 let resultSnapshot = null;
 let timer = null;
@@ -538,10 +539,14 @@ function assignmentStatus(item) {
 }
 
 function adminStatus(item) {
-  const status = assignmentStatus(item);
-  if (status === "Passed") return "Qualified";
-  if (status === "Failed" && remainingRetakes(item) === 0) return "Blocked";
-  return status;
+  const latest = latestAttempt(item.contributorId, item.quizId);
+  if (!latest) return "Not started";
+  if (latest.status === "In progress") return "In progress";
+  if (latest.status === "Passed") return "Qualified";
+  if (latest.status === "Failed" && remainingRetakes(item) === 0) return "Blocked";
+  if (latest.status === "Failed") return "Failed";
+  if (latest.status === "Submitted") return "In progress";
+  return latest.status;
 }
 
 function shouldShowRequired(item) {
@@ -679,13 +684,13 @@ function renderContributor() {
   return `
     <section class="content narrow">
       <div class="hero-panel">
-        <div class="panel">
+        <div class="panel builder-panel">
           <div class="panel-header">
             <div>
               <h1 class="section-title">Required quizzes</h1>
               <div class="section-kicker">Start here. Completed attempts move into history.</div>
             </div>
-            <span class="status ${current.offboarded ? "offboarded" : "not-started"}">${current.offboarded ? "View-only history" : "Active contractor"}</span>
+            ${current.offboarded ? `<span class="status offboarded">View-only history</span>` : ""}
           </div>
           <div class="panel-body">
             ${required.length ? `<div class="card-grid">${required.map(renderContributorQuizCard).join("")}</div>` : `
@@ -884,7 +889,7 @@ function adminStats() {
 
 function renderFilters() {
   const cohorts = ["All", ...new Set(state.contributors.map((person) => person.cohort))];
-  const statuses = ["All", "Qualified", "Blocked", "Not started", "In progress", "Retake available", "Locked", "Project inactive", "Offboarded", "Submitted"];
+  const statuses = ["All", "Qualified", "Blocked", "Not started", "In progress", "Passed", "Failed"];
   return `
     <div class="filters">
       <div class="field">
@@ -932,7 +937,7 @@ function filteredAdminRows() {
       const search = filters.search.trim().toLowerCase();
       if (search && !`${row.person.name} ${row.person.email}`.toLowerCase().includes(search)) return false;
       if (filters.quiz !== "All" && row.itemQuiz.id !== filters.quiz) return false;
-      if (filters.status !== "All" && row.status !== filters.status) return false;
+      if (filters.status !== "All" && row.status !== filters.status && row.latest?.status !== filters.status) return false;
       if (filters.cohort !== "All" && row.person.cohort !== filters.cohort) return false;
       if (filters.score !== "All") {
         if (!row.latest || row.latest.score === null) return filters.score === "Pending";
@@ -1073,6 +1078,7 @@ function renderEditor() {
   if (editorMode === "home") return renderEditorHome();
   const itemQuiz = quiz(selectedQuizId) || state.quizzes[0];
   const contentItems = quizContentItems(itemQuiz);
+  const assignedCount = assignmentCountForQuiz(itemQuiz.id);
   return `
     <section class="content">
       <div class="toolbar">
@@ -1083,7 +1089,7 @@ function renderEditor() {
         <div class="row-actions">
           <button class="button secondary" data-action="editor-home">All quizzes</button>
           <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview as contributor</button>
-          <button class="button" data-action="publish-quiz" data-quiz-id="${itemQuiz.id}" ${itemQuiz.draftDirty ? "" : "disabled"}>${itemQuiz.draftDirty ? "Publish changes" : "Published"}</button>
+          <button class="button" data-action="publish-quiz" data-quiz-id="${itemQuiz.id}" ${itemQuiz.draftDirty ? "" : "disabled"}>${itemQuiz.draftDirty ? "Publish content" : "Content published"}</button>
         </div>
       </div>
       <div class="editor-grid">
@@ -1095,6 +1101,14 @@ function renderEditor() {
             </div>
           </div>
           <div class="panel-body settings-list">
+            <div class="publish-note">
+              <div class="strong">Publishing and dashboard assignment</div>
+              <div class="cell-sub">Publishing saves the assessment content. Assigning pushes it to contributor dashboards.</div>
+              <div class="pill-row">
+                <span class="status ${itemQuiz.draftDirty ? "retake-available" : "qualified"}">${itemQuiz.draftDirty ? "Unpublished changes" : "Content published"}</span>
+                <span class="status ${assignedCount ? "qualified" : "locked"}">${assignedCount} dashboard assignment${assignedCount === 1 ? "" : "s"}</span>
+              </div>
+            </div>
             ${editorInput("Title", "title", itemQuiz.title)}
             ${editorInput("Google Docs guidelines URL", "guidelinesUrl", itemQuiz.guidelinesUrl)}
             ${editorNumber("Pass threshold", "passThreshold", itemQuiz.passThreshold, "%")}
@@ -1105,7 +1119,8 @@ function renderEditor() {
             ${editorToggle("Randomize answer choices", "randomizeAnswers", itemQuiz.randomizeAnswers)}
           </div>
         </div>
-        <div class="panel">
+        ${renderAssignmentPanel(itemQuiz)}
+        <div class="panel builder-panel">
           <div class="panel-header">
             <div>
               <h2 class="section-title small">Assessment builder</h2>
@@ -1149,10 +1164,11 @@ function renderEditorHome() {
                   <div class="quiz-card-meta">
                     <span class="status ${itemQuiz.status === "Published" ? "qualified" : "submitted"}">${escapeHtml(itemQuiz.status)}</span>
                     <span class="status ${itemQuiz.draftDirty ? "retake-available" : "locked"}" data-dirty-badge="${itemQuiz.id}">${itemQuiz.draftDirty ? "Unpublished changes" : "No unpublished changes"}</span>
+                    <span class="status ${assignmentCountForQuiz(itemQuiz.id) ? "qualified" : "locked"}">${assignmentCountForQuiz(itemQuiz.id) ? "On dashboards" : "Not on dashboards"}</span>
                   </div>
                 </div>
                 <div class="quiz-card-body">
-                  ${itemQuiz.coursePages.length} course pages - ${itemQuiz.questions.length} questions - ${itemQuiz.passThreshold}% pass threshold
+                  ${itemQuiz.coursePages.length} course pages - ${itemQuiz.questions.length} questions - ${assignmentCountForQuiz(itemQuiz.id)} assigned contributors
                 </div>
                 <div class="quiz-card-actions">
                   <button class="button" data-action="edit-quiz" data-quiz-id="${itemQuiz.id}">Edit quiz</button>
@@ -1193,6 +1209,47 @@ function editorToggle(label, field, enabled) {
         <div class="cell-sub">${field === "projectActive" ? "Inactive projects stay visible but disabled." : "Used when each attempt starts."}</div>
       </div>
       <button class="switch ${enabled ? "is-on" : ""}" data-action="toggle-editor" data-editor-field="${field}" aria-label="${escapeHtml(label)}"><span></span></button>
+    </div>
+  `;
+}
+
+function renderAssignmentPanel(itemQuiz) {
+  const canAssign = itemQuiz.status === "Published" && !itemQuiz.draftDirty;
+  const assignedIds = new Set(state.assignments.filter((item) => item.quizId === itemQuiz.id && !item.offboarded).map((item) => item.contributorId));
+  return `
+    <div class="panel assignment-panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="section-title small">Dashboard assignment</h2>
+          <div class="section-kicker">Choose who sees this quiz on their contributor dashboard.</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="publish-note">
+          <div class="strong">${canAssign ? "Ready to assign" : "Publish content first"}</div>
+          <div class="cell-sub">${canAssign ? "Assigning makes the quiz appear under Required quizzes." : "Unpublished changes are not pushed to dashboards."}</div>
+        </div>
+        <div style="height: 12px;"></div>
+        <button class="button" data-action="assign-all" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Push to all contributors</button>
+        <div style="height: 14px;"></div>
+        <div class="assignment-list">
+          ${state.contributors.filter((person) => !person.offboarded).map((person) => `
+            <label class="assignment-row">
+              <input type="checkbox" data-assign-email="${itemQuiz.id}" value="${person.id}" ${assignedIds.has(person.id) ? "checked" : ""} ${canAssign ? "" : "disabled"}>
+              <span>
+                <span class="strong">${escapeHtml(person.name)}</span>
+                <span class="cell-sub">${escapeHtml(person.email)}</span>
+              </span>
+              <span class="status ${assignedIds.has(person.id) ? "qualified" : "locked"}">${assignedIds.has(person.id) ? "Assigned" : "Not assigned"}</span>
+            </label>
+          `).join("")}
+        </div>
+        <div style="height: 12px;"></div>
+        <div class="row-actions">
+          <button class="button secondary" data-action="assign-selected" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Assign selected emails</button>
+          <button class="button ghost" data-action="unassign-unchecked" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Remove unchecked</button>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -1498,6 +1555,7 @@ function questionStats(itemQuiz) {
 
 function startQuiz(quizId, preview = false) {
   imageViewer = null;
+  if (preview) previewReturn = { view, editorMode, selectedQuizId };
   const itemQuiz = quiz(quizId);
   const item = state.assignments.find((candidate) => candidate.contributorId === state.currentContributorId && candidate.quizId === quizId);
   let attempt = !preview ? latestAttempt(state.currentContributorId, quizId) : null;
@@ -1633,6 +1691,7 @@ function renderQuizRunner() {
         <div class="row-actions">
           <a class="button secondary" href="${escapeHtml(itemQuiz.guidelinesUrl)}" target="_blank" rel="noreferrer">Guidelines</a>
           <button class="button secondary" data-action="toggle-pause">${session.isPaused ? "Resume timer" : "Pause"}</button>
+          ${session.preview ? `<button class="button secondary" data-action="back-to-editor">Back to editor</button>` : ""}
           <button class="button ghost" data-action="leave-quiz">Dashboard</button>
         </div>
       </div>
@@ -1723,24 +1782,28 @@ function renderImageViewer() {
   const itemQuiz = quiz(imageViewer.quizId);
   const question = getQuestion(itemQuiz, imageViewer.questionId);
   const resources = question?.resources || [];
+  const index = Math.min(Math.max(imageViewer.index || 0, 0), Math.max(resources.length - 1, 0));
+  const image = resources[index];
   return `
     <div class="image-viewer-backdrop">
       <div class="image-viewer panel">
         <div class="panel-header">
           <div>
             <h2 class="section-title small">Question resource images</h2>
-            <div class="section-kicker">${escapeHtml(question?.prompt || "")}</div>
+            <div class="section-kicker">${escapeHtml(question?.prompt || "")} ${resources.length ? `- ${index + 1} of ${resources.length}` : ""}</div>
           </div>
           <button class="button ghost" data-action="close-images">Close</button>
         </div>
         <div class="panel-body">
-          <div class="image-viewer-grid">
-            ${resources.map((image) => `
+          <div class="image-carousel">
+            ${image ? `
+              <button class="carousel-control" data-action="previous-image" ${index === 0 ? "disabled" : ""} aria-label="Previous image">Prev</button>
               <figure class="image-viewer-figure">
                 <img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.name)}">
                 <figcaption>${escapeHtml(image.name)}</figcaption>
               </figure>
-            `).join("")}
+              <button class="carousel-control" data-action="next-image" ${index === resources.length - 1 ? "disabled" : ""} aria-label="Next image">Next</button>
+            ` : `<div class="empty-state">No images attached.</div>`}
           </div>
         </div>
       </div>
@@ -1901,7 +1964,7 @@ function renderResult() {
               ${result.status === "Passed" ? `<div class="check-badge"><span class="check-icon" aria-hidden="true"></span> Qualified</div>` : ""}
               <div class="section-kicker">Active time: ${formatSeconds(result.activeSeconds)}</div>
               <p class="muted">${result.manualReview ? "Open text requires admin scoring before a final score appears." : "Your score and result are shown. Missed question review is not available."}</p>
-              <button class="button" data-action="return-dashboard">Return to dashboard</button>
+              <button class="button" data-action="${result.preview ? "back-to-editor" : "return-dashboard"}">${result.preview ? "Back to editor" : "Return to dashboard"}</button>
             </div>
           </div>
         </div>
@@ -2026,6 +2089,65 @@ function getQuestion(itemQuiz, questionId) {
 
 function getCoursePage(itemQuiz, pageId) {
   return itemQuiz.coursePages.find((page) => page.id === pageId);
+}
+
+function assignmentCountForQuiz(quizId) {
+  return state.assignments.filter((item) => item.quizId === quizId && !item.offboarded).length;
+}
+
+function ensureAssignment(contributorId, quizId) {
+  let item = state.assignments.find((candidate) => candidate.contributorId === contributorId && candidate.quizId === quizId);
+  if (item) {
+    item.locked = false;
+    item.offboarded = false;
+    return item;
+  }
+  item = {
+    id: `as-${contributorId}-${quizId}-${Date.now()}`,
+    contributorId,
+    quizId,
+    retakesAllowed: quiz(quizId)?.retakeLimit || 0,
+    retakesUsed: 0,
+    locked: false,
+    offboarded: false,
+    assignedAt: new Date().toISOString().slice(0, 10)
+  };
+  state.assignments.push(item);
+  return item;
+}
+
+function assignQuizToAll(quizId) {
+  const itemQuiz = quiz(quizId);
+  if (!canAssignQuiz(itemQuiz)) return;
+  state.contributors.filter((person) => !person.offboarded).forEach((person) => ensureAssignment(person.id, quizId));
+  addAudit("Quiz pushed to all dashboards", itemQuiz.title);
+  render();
+}
+
+function selectedContributorIdsForQuiz(quizId) {
+  return [...document.querySelectorAll(`[data-assign-email="${quizId}"]:checked`)].map((input) => input.value);
+}
+
+function assignQuizToSelected(quizId) {
+  const itemQuiz = quiz(quizId);
+  if (!canAssignQuiz(itemQuiz)) return;
+  const ids = selectedContributorIdsForQuiz(quizId);
+  ids.forEach((id) => ensureAssignment(id, quizId));
+  addAudit("Quiz assigned to selected emails", `${itemQuiz.title} - ${ids.length} contributor${ids.length === 1 ? "" : "s"}`);
+  render();
+}
+
+function unassignUnchecked(quizId) {
+  const itemQuiz = quiz(quizId);
+  if (!canAssignQuiz(itemQuiz)) return;
+  const selected = new Set(selectedContributorIdsForQuiz(quizId));
+  state.assignments = state.assignments.filter((item) => item.quizId !== quizId || selected.has(item.contributorId));
+  addAudit("Quiz dashboard assignment updated", itemQuiz.title);
+  render();
+}
+
+function canAssignQuiz(itemQuiz) {
+  return itemQuiz && itemQuiz.status === "Published" && !itemQuiz.draftDirty;
 }
 
 function deleteCoursePage(quizId, pageId) {
@@ -2252,6 +2374,16 @@ function handleClick(event) {
     view = "contributor";
     render();
   }
+  if (action === "back-to-editor") {
+    saveSession();
+    session = null;
+    resultSnapshot = null;
+    imageViewer = null;
+    view = "editor";
+    editorMode = previewReturn?.editorMode || "detail";
+    selectedQuizId = previewReturn?.selectedQuizId || selectedQuizId;
+    render();
+  }
   if (action === "view-attempt") {
     selectedAttemptId = button.dataset.attemptId;
     render();
@@ -2326,12 +2458,29 @@ function handleClick(event) {
     removeQuestionImage(button.dataset.quizId, button.dataset.questionId, button.dataset.imageId);
   }
   if (action === "view-question-images") {
-    imageViewer = { quizId: session.quizId, questionId: button.dataset.questionId };
+    imageViewer = { quizId: session.quizId, questionId: button.dataset.questionId, index: 0 };
     render();
   }
   if (action === "close-images") {
     imageViewer = null;
     render();
+  }
+  if (action === "previous-image" || action === "next-image") {
+    if (!imageViewer) return;
+    const itemQuiz = quiz(imageViewer.quizId);
+    const question = getQuestion(itemQuiz, imageViewer.questionId);
+    const maxIndex = Math.max(0, (question?.resources || []).length - 1);
+    imageViewer.index = Math.min(maxIndex, Math.max(0, (imageViewer.index || 0) + (action === "next-image" ? 1 : -1)));
+    render();
+  }
+  if (action === "assign-all") {
+    assignQuizToAll(button.dataset.quizId);
+  }
+  if (action === "assign-selected") {
+    assignQuizToSelected(button.dataset.quizId);
+  }
+  if (action === "unassign-unchecked") {
+    unassignUnchecked(button.dataset.quizId);
   }
   if (action === "toggle-editor") {
     const itemQuiz = quiz(selectedQuizId);
@@ -2348,7 +2497,7 @@ function handleClick(event) {
     }
     itemQuiz.status = "Published";
     itemQuiz.draftDirty = false;
-    addAudit("Quiz published", itemQuiz.title);
+    addAudit("Assessment content published", `${itemQuiz.title} - assign it to push to dashboards`);
     render();
   }
   if (action === "add-course-page") {
@@ -2356,7 +2505,8 @@ function handleClick(event) {
     const page = {
       id: `cp-${Date.now()}`,
       title: "New course page",
-      body: "Add project context, examples, or policy reminders."
+      body: "Add project context, examples, or policy reminders.",
+      bodyHtml: "<p>Add project context, examples, or policy reminders.</p>"
     };
     itemQuiz.coursePages.push(page);
     itemQuiz.contentOrder.push(contentKey("course", page.id));
