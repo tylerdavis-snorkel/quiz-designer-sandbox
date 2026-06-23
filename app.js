@@ -1,17 +1,20 @@
 const STORAGE_KEY = "qualifyLabSandboxState.v1";
+const PROJECT_NAME = "Aurora Response Quality";
 
 const app = document.querySelector("#app");
 
 const initialState = () => ({
   theme: "light",
+  projectName: PROJECT_NAME,
   currentContributorId: "c-alex",
   selectedQuizId: "q-safety",
   quizzes: [
     {
       id: "q-safety",
       title: "RLHF Safety Review Qualification",
-      project: "Aurora Response Quality",
+      project: PROJECT_NAME,
       status: "Published",
+      draftDirty: false,
       projectActive: true,
       guidelinesUrl: "https://docs.google.com/document/d/example-guidelines-safety",
       passThreshold: 82,
@@ -21,14 +24,17 @@ const initialState = () => ({
       randomizeAnswers: true,
       coursePages: [
         {
+          id: "cp-safety-1",
           title: "Rating posture",
           body: "Start with the project guidelines, compare the prompt against both answers, and only then score the response."
         },
         {
+          id: "cp-safety-2",
           title: "Safety checks",
           body: "Flag unsafe content even when the answer is otherwise fluent or helpful."
         }
       ],
+      contentOrder: ["course:cp-safety-1", "course:cp-safety-2", "question:qs-1", "question:qs-2", "question:qs-3", "question:qs-4", "question:qs-5"],
       questions: [
         {
           id: "qs-1",
@@ -36,7 +42,7 @@ const initialState = () => ({
           weight: 2,
           prompt: "A task asks you to compare two model responses. What is the safest first step?",
           hint: "The project document is the source of truth, even when the task feels familiar.",
-          referenceLabel: "Guideline excerpt: rubric hierarchy",
+          referenceLabel: "",
           answers: [
             { id: "a", text: "Read the current project guidelines and task-specific rubric", correct: true },
             { id: "b", text: "Pick the answer that sounds more natural", correct: false },
@@ -88,7 +94,7 @@ const initialState = () => ({
           weight: 3,
           prompt: "Two responses are similarly helpful, but one ignores a policy constraint from the prompt. What should you do?",
           hint: "A subtle policy miss can matter more than polish.",
-          referenceLabel: "Scenario reference: response pair",
+          referenceLabel: "",
           answers: [
             { id: "a", text: "Choose the polished response because the user experience is better", correct: false },
             { id: "b", text: "Choose the response that follows the policy constraint and note the issue", correct: true },
@@ -101,8 +107,9 @@ const initialState = () => ({
     {
       id: "q-multimodal",
       title: "Multimodal Rubric Calibration",
-      project: "Aurora Response Quality",
+      project: PROJECT_NAME,
       status: "Published",
+      draftDirty: false,
       projectActive: false,
       guidelinesUrl: "https://docs.google.com/document/d/example-guidelines-multimodal",
       passThreshold: 80,
@@ -111,6 +118,7 @@ const initialState = () => ({
       randomizeQuestions: true,
       randomizeAnswers: true,
       coursePages: [],
+      contentOrder: ["question:qm-1"],
       questions: [
         {
           id: "qm-1",
@@ -118,7 +126,7 @@ const initialState = () => ({
           weight: 2,
           prompt: "When an image reference is ambiguous, what should the contributor do?",
           hint: "Uncertainty should be represented in the rating.",
-          referenceLabel: "Uploaded reference image",
+          referenceLabel: "",
           answers: [
             { id: "a", text: "Use only visible evidence from the image", correct: true },
             { id: "b", text: "Infer hidden details if the response sounds likely", correct: false },
@@ -130,8 +138,9 @@ const initialState = () => ({
     {
       id: "q-search",
       title: "Search Quality Scenario Review",
-      project: "Aurora Response Quality",
+      project: PROJECT_NAME,
       status: "Draft",
+      draftDirty: true,
       projectActive: true,
       guidelinesUrl: "https://docs.google.com/document/d/example-guidelines-search",
       passThreshold: 85,
@@ -141,10 +150,12 @@ const initialState = () => ({
       randomizeAnswers: true,
       coursePages: [
         {
+          id: "cp-search-1",
           title: "Scenario tasking",
           body: "Some tasks ask contributors to reason as if they are doing production work before answering."
         }
       ],
+      contentOrder: ["course:cp-search-1", "question:qq-1", "question:qq-2"],
       questions: [
         {
           id: "qq-1",
@@ -152,7 +163,7 @@ const initialState = () => ({
           weight: 4,
           prompt: "Review this search scenario and explain which result should be rated higher.",
           hint: "Use the rubric language and cite the decision point.",
-          referenceLabel: "Scenario packet",
+          referenceLabel: "",
           answers: []
         },
         {
@@ -252,6 +263,7 @@ const initialState = () => ({
         "qs-4": ["a", "b", "c", "d"],
         "qs-5": ["d", "b", "a", "c"]
       },
+      stepKeys: ["question:qs-3", "question:qs-1", "question:qs-2", "question:qs-5", "question:qs-4"],
       answers: {
         "qs-3": "false",
         "qs-1": "a"
@@ -310,8 +322,10 @@ const initialState = () => ({
 let state = loadState();
 let view = "contributor";
 let selectedQuizId = state.selectedQuizId || state.quizzes[0].id;
+let editorMode = "home";
 let selectedAttemptId = null;
 let selectedAssignments = new Set();
+let draggedContentKey = null;
 let session = null;
 let resultSnapshot = null;
 let timer = null;
@@ -326,14 +340,15 @@ let filters = {
 function loadState() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return initialState();
-    return JSON.parse(saved);
+    const loaded = saved ? JSON.parse(saved) : initialState();
+    return normalizeState(loaded);
   } catch {
-    return initialState();
+    return normalizeState(initialState());
   }
 }
 
 function saveState() {
+  state = normalizeState(state);
   state.selectedQuizId = selectedQuizId;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
@@ -341,6 +356,7 @@ function saveState() {
 function resetState() {
   state = initialState();
   selectedQuizId = state.selectedQuizId;
+  editorMode = "home";
   selectedAttemptId = null;
   selectedAssignments = new Set();
   session = null;
@@ -348,6 +364,118 @@ function resetState() {
   view = "contributor";
   saveState();
   render();
+}
+
+function normalizeState(candidate) {
+  const next = candidate || initialState();
+  next.projectName = PROJECT_NAME;
+  next.quizzes = (next.quizzes || []).map(normalizeQuiz);
+  return next;
+}
+
+function normalizeQuiz(itemQuiz) {
+  itemQuiz.project = PROJECT_NAME;
+  itemQuiz.status = itemQuiz.status || "Draft";
+  itemQuiz.draftDirty = Boolean(itemQuiz.draftDirty || itemQuiz.status === "Draft");
+  itemQuiz.coursePages = (itemQuiz.coursePages || []).map((page, index) => ({
+    id: page.id || `cp-${itemQuiz.id}-${index + 1}`,
+    title: page.title || "Untitled course page",
+    body: page.body || ""
+  }));
+  itemQuiz.questions = (itemQuiz.questions || []).map((question, index) => normalizeQuestion(question, itemQuiz.id, index));
+  itemQuiz.contentOrder = cleanContentOrder(itemQuiz);
+  return itemQuiz;
+}
+
+function normalizeQuestion(question, quizId, index) {
+  const normalized = {
+    id: question.id || `q-${quizId}-${index + 1}`,
+    type: question.type || "Multiple choice",
+    weight: Number(question.weight || 1),
+    prompt: question.prompt || "Untitled question",
+    hint: question.hint || "",
+    referenceLabel: "",
+    answers: question.answers || [],
+    correctOrder: question.correctOrder || []
+  };
+  return normalizeQuestionByType(normalized);
+}
+
+function normalizeQuestionByType(question) {
+  if (question.type === "Long text") {
+    question.answers = [];
+    question.correctOrder = [];
+    return question;
+  }
+  if (question.type === "True/false") {
+    const currentCorrect = question.answers.find((answer) => answer.correct)?.text || "False";
+    question.answers = [
+      { id: "true", text: "True", correct: currentCorrect === "True" },
+      { id: "false", text: "False", correct: currentCorrect !== "True" }
+    ];
+    question.correctOrder = [];
+    return question;
+  }
+  if (!question.answers.length) {
+    question.answers = [
+      { id: `a-${Date.now()}`, text: "Correct answer", correct: true },
+      { id: `b-${Date.now()}`, text: "Distractor answer", correct: false }
+    ];
+  }
+  if (question.type === "Ranking") {
+    question.answers = question.answers.map((answer) => ({ ...answer, correct: false }));
+    question.correctOrder = question.correctOrder.length ? question.correctOrder : question.answers.map((answer) => answer.id);
+    return question;
+  }
+  if (!question.answers.some((answer) => answer.correct)) {
+    question.answers[0].correct = true;
+  }
+  question.correctOrder = [];
+  return question;
+}
+
+function cleanContentOrder(itemQuiz) {
+  const validKeys = new Set([
+    ...itemQuiz.coursePages.map((page) => contentKey("course", page.id)),
+    ...itemQuiz.questions.map((question) => contentKey("question", question.id))
+  ]);
+  const current = Array.isArray(itemQuiz.contentOrder) ? itemQuiz.contentOrder.filter((key) => validKeys.has(key)) : [];
+  const missing = [...validKeys].filter((key) => !current.includes(key));
+  return [...current, ...missing];
+}
+
+function contentKey(kind, id) {
+  return `${kind}:${id}`;
+}
+
+function splitContentKey(key) {
+  const [kind, id] = String(key).split(":");
+  return { kind, id };
+}
+
+function quizContentItems(itemQuiz) {
+  itemQuiz.contentOrder = cleanContentOrder(itemQuiz);
+  return itemQuiz.contentOrder.map((key) => {
+    const { kind, id } = splitContentKey(key);
+    const item = kind === "course"
+      ? itemQuiz.coursePages.find((page) => page.id === id)
+      : itemQuiz.questions.find((question) => question.id === id);
+    return item ? { key, kind, item } : null;
+  }).filter(Boolean);
+}
+
+function markQuizChanged(itemQuiz, action = "Assessment edited") {
+  itemQuiz.draftDirty = true;
+  itemQuiz.status = itemQuiz.status === "Published" ? "Published" : "Draft";
+  saveState();
+  const publishButton = document.querySelector(`button[data-action="publish-quiz"][data-quiz-id="${itemQuiz.id}"]`);
+  if (publishButton) {
+    publishButton.disabled = false;
+    publishButton.textContent = "Publish changes";
+  }
+  const dirtyBadge = document.querySelector(`[data-dirty-badge="${itemQuiz.id}"]`);
+  if (dirtyBadge) dirtyBadge.textContent = "Unpublished changes";
+  if (action) addAudit(action, itemQuiz.title);
 }
 
 function escapeHtml(value) {
@@ -939,20 +1067,20 @@ function renderAttemptDetail() {
 }
 
 function renderEditor() {
-  const itemQuiz = quiz(selectedQuizId);
+  if (editorMode === "home") return renderEditorHome();
+  const itemQuiz = quiz(selectedQuizId) || state.quizzes[0];
+  const contentItems = quizContentItems(itemQuiz);
   return `
     <section class="content">
       <div class="toolbar">
         <div>
-          <h1 class="section-title">Quiz editor</h1>
-          <div class="section-kicker">Course pages are optional. A guidelines link is required before publishing.</div>
+          <h1 class="section-title">Editing: ${escapeHtml(itemQuiz.title)}</h1>
+          <div class="section-kicker">One project sandbox: ${escapeHtml(PROJECT_NAME)}. Drag course pages and questions into the order contributors should see them.</div>
         </div>
         <div class="row-actions">
-          <select class="select" data-action="select-editor-quiz">
-            ${state.quizzes.map((candidate) => `<option value="${candidate.id}" ${candidate.id === selectedQuizId ? "selected" : ""}>${escapeHtml(candidate.title)}</option>`).join("")}
-          </select>
+          <button class="button secondary" data-action="editor-home">All quizzes</button>
           <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview as contributor</button>
-          <button class="button" data-action="publish-quiz" data-quiz-id="${itemQuiz.id}">Publish</button>
+          <button class="button" data-action="publish-quiz" data-quiz-id="${itemQuiz.id}" ${itemQuiz.draftDirty ? "" : "disabled"}>${itemQuiz.draftDirty ? "Publish changes" : "Published"}</button>
         </div>
       </div>
       <div class="editor-grid">
@@ -977,8 +1105,8 @@ function renderEditor() {
         <div class="panel">
           <div class="panel-header">
             <div>
-              <h2 class="section-title small">Course and questions</h2>
-              <div class="section-kicker">Supports MC, multi-select, ranking, true/false, scenario review, and long text.</div>
+              <h2 class="section-title small">Assessment builder</h2>
+              <div class="section-kicker">Drag blocks to reorder. Edit text, question type, answers, correct answers, weights, and hints inline.</div>
             </div>
             <div class="row-actions">
               <button class="button secondary" data-action="add-course-page" data-quiz-id="${itemQuiz.id}">Add course page</button>
@@ -986,31 +1114,49 @@ function renderEditor() {
             </div>
           </div>
           <div class="panel-body">
-            <div class="builder-list">
-              ${itemQuiz.coursePages.map((page, index) => `
-                <div class="builder-item">
-                  <div class="builder-top">
-                    <div>
-                      <h3 class="builder-title">Course page ${index + 1}: ${escapeHtml(page.title)}</h3>
-                      <div class="builder-meta">${escapeHtml(page.body)}</div>
-                    </div>
-                    <span class="status not-started">Optional</span>
-                  </div>
-                </div>
-              `).join("")}
-              ${itemQuiz.questions.map((question, index) => `
-                <div class="builder-item">
-                  <div class="builder-top">
-                    <div>
-                      <h3 class="builder-title">Question ${index + 1}: ${escapeHtml(question.prompt)}</h3>
-                      <div class="builder-meta">${escapeHtml(question.type)} - weight ${question.weight} - hint enabled</div>
-                    </div>
-                    <span class="status ${question.type === "Long text" ? "submitted" : "qualified"}">${question.type === "Long text" ? "Manual scoring" : "Auto scored"}</span>
-                  </div>
-                  ${question.referenceLabel ? `<div style="height: 12px;"></div><div class="reference-tile">${escapeHtml(question.referenceLabel)}</div>` : ""}
-                </div>
-              `).join("")}
+            <div class="builder-list" data-builder-list="${itemQuiz.id}">
+              ${contentItems.length ? contentItems.map((entry, index) => renderContentBlock(itemQuiz, entry, index)).join("") : `
+                <div class="empty-state">Add a course page or question to start building this quiz.</div>
+              `}
             </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderEditorHome() {
+  return `
+    <section class="content">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h1 class="section-title">Create a new quiz or choose an existing quiz</h1>
+            <div class="section-kicker">Sandbox project: ${escapeHtml(PROJECT_NAME)}. This prototype treats all quizzes as part of one project.</div>
+          </div>
+          <button class="button" data-action="create-quiz">Create new quiz</button>
+        </div>
+        <div class="panel-body">
+          <div class="card-grid">
+            ${state.quizzes.map((itemQuiz) => `
+              <article class="quiz-card">
+                <div>
+                  <h2 class="quiz-card-title">${escapeHtml(itemQuiz.title)}</h2>
+                  <div class="quiz-card-meta">
+                    <span class="status ${itemQuiz.status === "Published" ? "qualified" : "submitted"}">${escapeHtml(itemQuiz.status)}</span>
+                    <span class="status ${itemQuiz.draftDirty ? "retake-available" : "locked"}" data-dirty-badge="${itemQuiz.id}">${itemQuiz.draftDirty ? "Unpublished changes" : "No unpublished changes"}</span>
+                  </div>
+                </div>
+                <div class="quiz-card-body">
+                  ${itemQuiz.coursePages.length} course pages - ${itemQuiz.questions.length} questions - ${itemQuiz.passThreshold}% pass threshold
+                </div>
+                <div class="quiz-card-actions">
+                  <button class="button" data-action="edit-quiz" data-quiz-id="${itemQuiz.id}">Edit quiz</button>
+                  <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview</button>
+                </div>
+              </article>
+            `).join("")}
           </div>
         </div>
       </div>
@@ -1044,6 +1190,121 @@ function editorToggle(label, field, enabled) {
         <div class="cell-sub">${field === "projectActive" ? "Inactive projects stay visible but disabled." : "Used when each attempt starts."}</div>
       </div>
       <button class="switch ${enabled ? "is-on" : ""}" data-action="toggle-editor" data-editor-field="${field}" aria-label="${escapeHtml(label)}"><span></span></button>
+    </div>
+  `;
+}
+
+function renderContentBlock(itemQuiz, entry, index) {
+  if (entry.kind === "course") return renderCourseEditorBlock(itemQuiz, entry.item, entry.key, index);
+  return renderQuestionEditorBlock(itemQuiz, entry.item, entry.key, index);
+}
+
+function renderCourseEditorBlock(itemQuiz, page, key, index) {
+  return `
+    <div class="builder-item draggable-item" draggable="true" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
+      <div class="builder-top">
+        <div>
+          <div class="builder-label"><span class="drag-handle" aria-hidden="true">::</span> Course page ${index + 1}</div>
+          <h3 class="builder-title">${escapeHtml(page.title)}</h3>
+        </div>
+        <div class="row-actions">
+          <span class="status not-started">Training</span>
+          <button class="button small secondary" data-action="delete-course-page" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}">Delete</button>
+        </div>
+      </div>
+      <div class="editor-form-grid">
+        <div class="field">
+          <label>Page title</label>
+          <input class="input" value="${escapeHtml(page.title)}" data-course-field="title" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}">
+        </div>
+        <div class="field full-span">
+          <label>Course content</label>
+          <textarea class="textarea" data-course-field="body" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}">${escapeHtml(page.body)}</textarea>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderQuestionEditorBlock(itemQuiz, question, key, index) {
+  const answerEditor = renderAnswerEditor(itemQuiz, question);
+  return `
+    <div class="builder-item draggable-item" draggable="true" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
+      <div class="builder-top">
+        <div>
+          <div class="builder-label"><span class="drag-handle" aria-hidden="true">::</span> Question ${index + 1}</div>
+          <h3 class="builder-title">${escapeHtml(question.prompt)}</h3>
+        </div>
+        <div class="row-actions">
+          <span class="status ${question.type === "Long text" ? "submitted" : "qualified"}">${question.type === "Long text" ? "Manual scoring" : "Auto scored"}</span>
+          <button class="button small secondary" data-action="delete-question" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">Delete</button>
+        </div>
+      </div>
+      <div class="editor-form-grid">
+        <div class="field">
+          <label>Question type</label>
+          <select class="select" data-question-field="type" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">
+            ${["Multiple choice", "Multi-select", "True/false", "Ranking", "Scenario review", "Long text"].map((type) => `<option ${question.type === type ? "selected" : ""}>${type}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label>Weight</label>
+          <input class="input" type="number" min="1" value="${escapeHtml(question.weight)}" data-question-field="weight" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">
+        </div>
+        <div class="field full-span">
+          <label>Question text</label>
+          <textarea class="textarea" data-question-field="prompt" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">${escapeHtml(question.prompt)}</textarea>
+        </div>
+        <div class="field full-span">
+          <label>Hint shown during quiz</label>
+          <input class="input" value="${escapeHtml(question.hint || "")}" data-question-field="hint" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">
+        </div>
+      </div>
+      ${answerEditor}
+    </div>
+  `;
+}
+
+function renderAnswerEditor(itemQuiz, question) {
+  if (question.type === "Long text") {
+    return `<div class="answer-editor-note">Long text responses are reviewed by an admin and can receive partial credit.</div>`;
+  }
+  const isSingleCorrect = ["Multiple choice", "True/false", "Scenario review"].includes(question.type);
+  return `
+    <div class="answer-editor">
+      <div class="answer-editor-header">
+        <div>
+          <div class="strong">${question.type === "Ranking" ? "Ranking choices" : "Answers"}</div>
+          <div class="cell-sub">${question.type === "Ranking" ? "The answer list order is treated as the correct ranking." : "Mark the correct answer text directly here."}</div>
+        </div>
+        ${question.type === "True/false" ? "" : `<button class="button small secondary" data-action="add-answer" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">Add answer</button>`}
+      </div>
+      <div class="answer-editor-list">
+        ${question.answers.map((answer, index) => `
+          <div class="answer-editor-row">
+            <label class="answer-correct">
+              <input
+                type="${isSingleCorrect ? "radio" : "checkbox"}"
+                name="correct-${question.id}"
+                data-answer-correct="${question.id}"
+                data-quiz-id="${itemQuiz.id}"
+                data-answer-id="${answer.id}"
+                ${answer.correct || (question.type === "Ranking" && question.correctOrder?.[index] === answer.id) ? "checked" : ""}
+                ${question.type === "Ranking" ? "disabled" : ""}
+              >
+              <span>${question.type === "Ranking" ? index + 1 : "Correct"}</span>
+            </label>
+            <input class="input" value="${escapeHtml(answer.text)}" data-answer-field="text" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-answer-id="${answer.id}" ${question.type === "True/false" ? "readonly" : ""}>
+            <div class="row-actions">
+              ${question.type === "Ranking" ? `
+                <button class="button small secondary" data-action="move-answer" data-direction="up" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-answer-id="${answer.id}" ${index === 0 ? "disabled" : ""}>Up</button>
+                <button class="button small secondary" data-action="move-answer" data-direction="down" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-answer-id="${answer.id}" ${index === question.answers.length - 1 ? "disabled" : ""}>Down</button>
+              ` : ""}
+              ${question.type === "True/false" ? "" : `<button class="button small ghost" data-action="delete-answer" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-answer-id="${answer.id}" ${question.answers.length <= 2 ? "disabled" : ""}>Remove</button>`}
+            </div>
+          </div>
+        `).join("")}
+      </div>
     </div>
   `;
 }
@@ -1169,6 +1430,8 @@ function startQuiz(quizId, preview = false) {
   const item = state.assignments.find((candidate) => candidate.contributorId === state.currentContributorId && candidate.quizId === quizId);
   let attempt = !preview ? latestAttempt(state.currentContributorId, quizId) : null;
   if (!preview && (!attempt || attempt.status !== "In progress")) {
+    const generatedStepKeys = orderedStepKeys(itemQuiz);
+    const generatedQuestionIds = questionIdsFromStepKeys(generatedStepKeys);
     if (attempt && attempt.status === "Failed" && item && remainingRetakes(item) > 0) {
       item.retakesUsed += 1;
     }
@@ -1185,13 +1448,16 @@ function startQuiz(quizId, preview = false) {
       manualReview: false,
       overridden: false,
       note: "",
-      questionIds: orderedQuestionIds(itemQuiz),
+      stepKeys: generatedStepKeys,
+      questionIds: generatedQuestionIds,
       answerOrderByQuestion: answerOrders(itemQuiz),
       answers: {}
     };
     state.attempts.push(attempt);
   }
   if (preview) {
+    const generatedStepKeys = orderedStepKeys(itemQuiz);
+    const generatedQuestionIds = questionIdsFromStepKeys(generatedStepKeys);
     attempt = {
       id: `preview-${Date.now()}`,
       contributorId: state.currentContributorId,
@@ -1205,7 +1471,8 @@ function startQuiz(quizId, preview = false) {
       manualReview: false,
       overridden: false,
       note: "",
-      questionIds: orderedQuestionIds(itemQuiz),
+      stepKeys: generatedStepKeys,
+      questionIds: generatedQuestionIds,
       answerOrderByQuestion: answerOrders(itemQuiz),
       answers: {}
     };
@@ -1218,6 +1485,7 @@ function startQuiz(quizId, preview = false) {
     isPaused: false,
     hintOpen: {},
     activeSeconds: attempt.activeSeconds || 0,
+    stepKeys: attempt.stepKeys || orderedStepKeys(itemQuiz, attempt.questionIds),
     questionIds: attempt.questionIds || orderedQuestionIds(itemQuiz),
     answerOrderByQuestion: attempt.answerOrderByQuestion || answerOrders(itemQuiz),
     answers: attempt.answers || {}
@@ -1226,9 +1494,29 @@ function startQuiz(quizId, preview = false) {
   render();
 }
 
+function orderedStepKeys(itemQuiz, existingQuestionIds = null) {
+  const keys = quizContentItems(itemQuiz).map((entry) => entry.key);
+  const questionKeys = existingQuestionIds
+    ? existingQuestionIds.map((id) => contentKey("question", id))
+    : keys.filter((key) => key.startsWith("question:"));
+  const randomizedQuestionKeys = itemQuiz.randomizeQuestions ? shuffle(questionKeys) : questionKeys;
+  let questionIndex = 0;
+  return keys.map((key) => {
+    if (!key.startsWith("question:")) return key;
+    const replacement = randomizedQuestionKeys[questionIndex];
+    questionIndex += 1;
+    return replacement || key;
+  });
+}
+
 function orderedQuestionIds(itemQuiz) {
-  const ids = itemQuiz.questions.map((question) => question.id);
-  return itemQuiz.randomizeQuestions ? shuffle(ids) : ids;
+  return questionIdsFromStepKeys(orderedStepKeys(itemQuiz));
+}
+
+function questionIdsFromStepKeys(stepKeys) {
+  return stepKeys
+    .filter((key) => key.startsWith("question:"))
+    .map((key) => splitContentKey(key).id);
 }
 
 function answerOrders(itemQuiz) {
@@ -1254,16 +1542,17 @@ function renderQuizRunner() {
     return;
   }
   const itemQuiz = quiz(session.quizId);
-  const currentQuestionId = session.questionIds[session.index];
-  const question = itemQuiz.questions.find((candidate) => candidate.id === currentQuestionId);
-  const progress = Math.round(((session.index + 1) / session.questionIds.length) * 100);
+  session.stepKeys = session.stepKeys || orderedStepKeys(itemQuiz, session.questionIds);
+  const currentStepKey = session.stepKeys[session.index];
+  const currentStep = stepFromKey(itemQuiz, currentStepKey);
+  const progress = Math.round(((session.index + 1) / session.stepKeys.length) * 100);
   app.innerHTML = `
     <main class="quiz-runner">
       <div class="runner-header">
         <div>
           <div class="pill-row">
             <span class="status not-started">${session.preview ? "Preview" : "Active attempt"}</span>
-            <span class="status submitted">Question ${session.index + 1} of ${session.questionIds.length}</span>
+            <span class="status submitted">Step ${session.index + 1} of ${session.stepKeys.length}</span>
             <span class="status not-started">Active time ${formatSeconds(session.activeSeconds)}</span>
           </div>
           <h1 class="section-title" style="margin-top: 12px;">${escapeHtml(itemQuiz.title)}</h1>
@@ -1282,43 +1571,73 @@ function renderQuizRunner() {
           <div class="muted">Active quiz time is stopped. Your answers remain editable after resuming.</div>
         </div>
       ` : ""}
-      <div class="question-layout">
-        <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="section-title small">${escapeHtml(question.prompt)}</h2>
-              <div class="section-kicker">${escapeHtml(question.type)} - weight ${question.weight}</div>
-            </div>
-          </div>
-          <div class="panel-body">
-            ${renderAnswerControl(question)}
-            <div style="height: 14px;"></div>
-            <button class="button secondary" data-action="toggle-hint" data-question-id="${question.id}">${session.hintOpen[question.id] ? "Hide hint" : "Show hint"}</button>
-            ${session.hintOpen[question.id] ? `<div style="height: 10px;"></div><div class="hint-box">${escapeHtml(question.hint)}</div>` : ""}
-          </div>
-        </section>
-        <aside class="panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="section-title small">Reference</h2>
-              <div class="section-kicker">Question-level upload area</div>
-            </div>
-          </div>
-          <div class="panel-body">
-            <div class="reference-tile">${escapeHtml(question.referenceLabel || "No image reference uploaded")}</div>
-            <div style="height: 14px;"></div>
-            <div class="muted">Hints are learning aids and do not reduce the score.</div>
-          </div>
-        </aside>
-      </div>
+      ${currentStep.kind === "course" ? renderCourseStep(currentStep.item) : renderQuestionStep(currentStep.item)}
       <div class="toolbar">
         <button class="button secondary" data-action="previous-question" ${session.index === 0 ? "disabled" : ""}>Previous</button>
         <div class="row-actions">
-          <button class="button secondary" data-action="next-question" ${session.index === session.questionIds.length - 1 ? "disabled" : ""}>Next</button>
-          <button class="button" data-action="submit-quiz">Submit</button>
+          <button class="button secondary" data-action="next-question" ${session.index === session.stepKeys.length - 1 ? "disabled" : ""}>Next</button>
+          <button class="button" data-action="submit-quiz" ${session.index === session.stepKeys.length - 1 ? "" : "disabled"}>Submit</button>
         </div>
       </div>
     </main>
+  `;
+}
+
+function stepFromKey(itemQuiz, key) {
+  const { kind, id } = splitContentKey(key);
+  if (kind === "course") {
+    return { kind, item: itemQuiz.coursePages.find((page) => page.id === id) || itemQuiz.coursePages[0] };
+  }
+  return { kind: "question", item: itemQuiz.questions.find((question) => question.id === id) || itemQuiz.questions[0] };
+}
+
+function renderCourseStep(page) {
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="section-title small">${escapeHtml(page.title)}</h2>
+          <div class="section-kicker">Course content</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <p class="muted" style="max-width: 760px;">${escapeHtml(page.body)}</p>
+      </div>
+    </section>
+  `;
+}
+
+function renderQuestionStep(question) {
+  return `
+    <div class="question-layout">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="section-title small">${escapeHtml(question.prompt)}</h2>
+            <div class="section-kicker">${escapeHtml(question.type)} - weight ${question.weight}</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          ${renderAnswerControl(question)}
+          <div style="height: 14px;"></div>
+          <button class="button secondary" data-action="toggle-hint" data-question-id="${question.id}">${session.hintOpen[question.id] ? "Hide hint" : "Show hint"}</button>
+          ${session.hintOpen[question.id] ? `<div style="height: 10px;"></div><div class="hint-box">${escapeHtml(question.hint)}</div>` : ""}
+        </div>
+      </section>
+      <aside class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="section-title small">Reference</h2>
+            <div class="section-kicker">Optional question image</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="reference-tile">${escapeHtml(question.referenceLabel || "No reference image uploaded")}</div>
+          <div style="height: 14px;"></div>
+          <div class="muted">Hints are learning aids and do not reduce the score.</div>
+        </div>
+      </aside>
+    </div>
   `;
 }
 
@@ -1397,6 +1716,7 @@ function saveSession() {
   attempt.activeSeconds = session.activeSeconds;
   attempt.answers = session.answers;
   attempt.questionIds = session.questionIds;
+  attempt.stepKeys = session.stepKeys;
   attempt.answerOrderByQuestion = session.answerOrderByQuestion;
   saveState();
 }
@@ -1423,6 +1743,8 @@ function submitQuiz() {
     attempt.submittedAt = new Date().toISOString();
     attempt.activeSeconds = session.activeSeconds;
     attempt.answers = session.answers;
+    attempt.stepKeys = session.stepKeys;
+    attempt.questionIds = questionIdsFromStepKeys(session.stepKeys);
     addAudit("Attempt submitted", `${contributor(attempt.contributorId).email} - ${itemQuiz.title}`);
   }
   session = null;
@@ -1542,12 +1864,154 @@ function csvCell(value) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
+function createNewQuiz() {
+  const id = `q-${Date.now()}`;
+  const pageId = `cp-${Date.now()}`;
+  const questionId = `qst-${Date.now()}`;
+  const newQuiz = {
+    id,
+    title: "Untitled qualification quiz",
+    project: PROJECT_NAME,
+    status: "Draft",
+    draftDirty: true,
+    projectActive: true,
+    guidelinesUrl: "",
+    passThreshold: 80,
+    retakeLimit: 0,
+    estimatedMinutes: 15,
+    randomizeQuestions: true,
+    randomizeAnswers: true,
+    coursePages: [
+      {
+        id: pageId,
+        title: "Course overview",
+        body: "Add the context contributors should read before starting the assessment."
+      }
+    ],
+    questions: [
+      normalizeQuestionByType({
+        id: questionId,
+        type: "Multiple choice",
+        weight: 1,
+        prompt: "New qualification question",
+        hint: "Add an optional hint shown during the quiz.",
+        referenceLabel: "",
+        answers: [
+          { id: `ans-${Date.now()}-1`, text: "Correct answer", correct: true },
+          { id: `ans-${Date.now()}-2`, text: "Distractor answer", correct: false }
+        ]
+      })
+    ],
+    contentOrder: [contentKey("course", pageId), contentKey("question", questionId)]
+  };
+  state.quizzes.unshift(newQuiz);
+  selectedQuizId = id;
+  editorMode = "detail";
+  addAudit("Quiz created", newQuiz.title);
+  render();
+}
+
+function getQuestion(itemQuiz, questionId) {
+  return itemQuiz.questions.find((question) => question.id === questionId);
+}
+
+function getCoursePage(itemQuiz, pageId) {
+  return itemQuiz.coursePages.find((page) => page.id === pageId);
+}
+
+function deleteCoursePage(quizId, pageId) {
+  const itemQuiz = quiz(quizId);
+  itemQuiz.coursePages = itemQuiz.coursePages.filter((page) => page.id !== pageId);
+  itemQuiz.contentOrder = itemQuiz.contentOrder.filter((key) => key !== contentKey("course", pageId));
+  markQuizChanged(itemQuiz, "Course page deleted");
+  render();
+}
+
+function deleteQuestion(quizId, questionId) {
+  const itemQuiz = quiz(quizId);
+  if (itemQuiz.questions.length <= 1) {
+    alert("Keep at least one question in the quiz.");
+    return;
+  }
+  itemQuiz.questions = itemQuiz.questions.filter((question) => question.id !== questionId);
+  itemQuiz.contentOrder = itemQuiz.contentOrder.filter((key) => key !== contentKey("question", questionId));
+  markQuizChanged(itemQuiz, "Question deleted");
+  render();
+}
+
+function addAnswer(quizId, questionId) {
+  const itemQuiz = quiz(quizId);
+  const question = getQuestion(itemQuiz, questionId);
+  if (!question || question.type === "True/false" || question.type === "Long text") return;
+  const answer = { id: `ans-${Date.now()}`, text: "New answer", correct: false };
+  question.answers.push(answer);
+  if (question.type === "Ranking") question.correctOrder = question.answers.map((item) => item.id);
+  markQuizChanged(itemQuiz, "Answer added");
+  render();
+}
+
+function deleteAnswer(quizId, questionId, answerId) {
+  const itemQuiz = quiz(quizId);
+  const question = getQuestion(itemQuiz, questionId);
+  if (!question || question.answers.length <= 2) return;
+  question.answers = question.answers.filter((answer) => answer.id !== answerId);
+  question.correctOrder = (question.correctOrder || []).filter((id) => id !== answerId);
+  if (!question.answers.some((answer) => answer.correct) && question.type !== "Ranking") {
+    question.answers[0].correct = true;
+  }
+  if (question.type === "Ranking") question.correctOrder = question.answers.map((answer) => answer.id);
+  markQuizChanged(itemQuiz, "Answer removed");
+  render();
+}
+
+function moveAnswer(quizId, questionId, answerId, direction) {
+  const itemQuiz = quiz(quizId);
+  const question = getQuestion(itemQuiz, questionId);
+  if (!question) return;
+  const index = question.answers.findIndex((answer) => answer.id === answerId);
+  const nextIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || nextIndex < 0 || nextIndex >= question.answers.length) return;
+  [question.answers[index], question.answers[nextIndex]] = [question.answers[nextIndex], question.answers[index]];
+  if (question.type === "Ranking") question.correctOrder = question.answers.map((answer) => answer.id);
+  markQuizChanged(itemQuiz, null);
+}
+
+function setCorrectAnswer(quizId, questionId, answerId, checked) {
+  const itemQuiz = quiz(quizId);
+  const question = getQuestion(itemQuiz, questionId);
+  if (!question || question.type === "Ranking") return;
+  if (["Multiple choice", "True/false", "Scenario review"].includes(question.type)) {
+    question.answers.forEach((answer) => {
+      answer.correct = answer.id === answerId;
+    });
+  } else {
+    const answer = question.answers.find((candidate) => candidate.id === answerId);
+    if (answer) answer.correct = checked;
+  }
+  if (!question.answers.some((answer) => answer.correct)) {
+    const fallback = question.answers.find((answer) => answer.id === answerId) || question.answers[0];
+    if (fallback) fallback.correct = true;
+  }
+  markQuizChanged(itemQuiz, null);
+}
+
+function updateQuestionType(quizId, questionId, type) {
+  const itemQuiz = quiz(quizId);
+  const question = getQuestion(itemQuiz, questionId);
+  if (!question) return;
+  question.type = type;
+  normalizeQuestionByType(question);
+  markQuizChanged(itemQuiz, `Question type changed to ${type}`);
+  render();
+}
+
 function handleClick(event) {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
   if (action === "nav") {
     view = button.dataset.view;
+    if (view === "editor") editorMode = "home";
     render();
   }
   if (action === "toggle-theme") {
@@ -1578,7 +2042,7 @@ function handleClick(event) {
     render();
   }
   if (action === "next-question") {
-    session.index = Math.min(session.questionIds.length - 1, session.index + 1);
+    session.index = Math.min(session.stepKeys.length - 1, session.index + 1);
     saveSession();
     render();
   }
@@ -1643,39 +2107,81 @@ function handleClick(event) {
     render();
   }
   if (action === "export-csv") exportCsv();
+  if (action === "editor-home") {
+    editorMode = "home";
+    render();
+  }
+  if (action === "edit-quiz") {
+    selectedQuizId = button.dataset.quizId;
+    editorMode = "detail";
+    render();
+  }
+  if (action === "create-quiz") {
+    createNewQuiz();
+  }
   if (action === "toggle-editor") {
     const itemQuiz = quiz(selectedQuizId);
     itemQuiz[button.dataset.editorField] = !itemQuiz[button.dataset.editorField];
-    addAudit("Quiz setting changed", `${itemQuiz.title}: ${button.dataset.editorField}`);
+    markQuizChanged(itemQuiz, `Quiz setting changed: ${button.dataset.editorField}`);
     render();
   }
   if (action === "publish-quiz") {
     const itemQuiz = quiz(button.dataset.quizId);
+    if (!itemQuiz.draftDirty) return;
+    if (!itemQuiz.guidelinesUrl.trim()) {
+      alert("Add the Google Docs guidelines link before publishing.");
+      return;
+    }
     itemQuiz.status = "Published";
+    itemQuiz.draftDirty = false;
     addAudit("Quiz published", itemQuiz.title);
     render();
   }
   if (action === "add-course-page") {
     const itemQuiz = quiz(button.dataset.quizId);
-    itemQuiz.coursePages.push({ title: "New course page", body: "Add project context, examples, or policy reminders." });
-    addAudit("Course page added", itemQuiz.title);
+    const page = {
+      id: `cp-${Date.now()}`,
+      title: "New course page",
+      body: "Add project context, examples, or policy reminders."
+    };
+    itemQuiz.coursePages.push(page);
+    itemQuiz.contentOrder.push(contentKey("course", page.id));
+    markQuizChanged(itemQuiz, "Course page added");
     render();
   }
   if (action === "add-question") {
     const itemQuiz = quiz(button.dataset.quizId);
-    itemQuiz.questions.push({
+    const question = normalizeQuestionByType({
       id: `q-${Date.now()}`,
       type: "Multiple choice",
       weight: 1,
       prompt: "New qualification question",
       hint: "Add a helpful testing hint.",
-      referenceLabel: "Optional uploaded reference",
+      referenceLabel: "",
       answers: [
         { id: "a", text: "Correct answer", correct: true },
         { id: "b", text: "Distractor answer", correct: false }
       ]
     });
-    addAudit("Question added", itemQuiz.title);
+    itemQuiz.questions.push(question);
+    itemQuiz.contentOrder.push(contentKey("question", question.id));
+    markQuizChanged(itemQuiz, "Question added");
+    render();
+  }
+  if (action === "delete-course-page") {
+    deleteCoursePage(button.dataset.quizId, button.dataset.pageId);
+  }
+  if (action === "delete-question") {
+    deleteQuestion(button.dataset.quizId, button.dataset.questionId);
+  }
+  if (action === "add-answer") {
+    addAnswer(button.dataset.quizId, button.dataset.questionId);
+  }
+  if (action === "delete-answer") {
+    deleteAnswer(button.dataset.quizId, button.dataset.questionId, button.dataset.answerId);
+  }
+  if (action === "move-answer") {
+    moveAnswer(button.dataset.quizId, button.dataset.questionId, button.dataset.answerId, button.dataset.direction);
     render();
   }
   if (action === "save-note") {
@@ -1699,7 +2205,32 @@ function handleInput(event) {
     const itemQuiz = quiz(selectedQuizId);
     const field = target.dataset.editorField;
     itemQuiz[field] = target.type === "number" ? Number(target.value) : target.value;
-    saveState();
+    markQuizChanged(itemQuiz, null);
+  }
+  if (target.dataset.courseField) {
+    const itemQuiz = quiz(target.dataset.quizId);
+    const page = getCoursePage(itemQuiz, target.dataset.pageId);
+    if (page) {
+      page[target.dataset.courseField] = target.value;
+      markQuizChanged(itemQuiz, null);
+    }
+  }
+  if (target.dataset.questionField && target.dataset.questionField !== "type") {
+    const itemQuiz = quiz(target.dataset.quizId);
+    const question = getQuestion(itemQuiz, target.dataset.questionId);
+    if (question) {
+      question[target.dataset.questionField] = target.type === "number" ? Number(target.value) : target.value;
+      markQuizChanged(itemQuiz, null);
+    }
+  }
+  if (target.dataset.answerField) {
+    const itemQuiz = quiz(target.dataset.quizId);
+    const question = getQuestion(itemQuiz, target.dataset.questionId);
+    const answer = question?.answers.find((candidate) => candidate.id === target.dataset.answerId);
+    if (answer) {
+      answer[target.dataset.answerField] = target.value;
+      markQuizChanged(itemQuiz, null);
+    }
   }
   if (target.dataset.answerText) {
     session.answers[target.dataset.answerText] = target.value;
@@ -1716,6 +2247,12 @@ function handleChange(event) {
   if (target.dataset.action === "select-editor-quiz") {
     selectedQuizId = target.value;
     render();
+  }
+  if (target.dataset.questionField === "type") {
+    updateQuestionType(target.dataset.quizId, target.dataset.questionId, target.value);
+  }
+  if (target.dataset.answerCorrect) {
+    setCorrectAnswer(target.dataset.quizId, target.dataset.answerCorrect, target.dataset.answerId, target.checked);
   }
   if (target.dataset.filter) {
     filters[target.dataset.filter] = target.value;
@@ -1735,6 +2272,56 @@ function handleChange(event) {
     }
     saveSession();
   }
+}
+
+function handleDragStart(event) {
+  const item = event.target.closest("[data-content-key]");
+  if (!item) return;
+  draggedContentKey = item.dataset.contentKey;
+  event.dataTransfer?.setData("text/plain", draggedContentKey);
+  item.classList.add("is-dragging");
+}
+
+function handleDragOver(event) {
+  const item = event.target.closest("[data-content-key]");
+  if (!item || !draggedContentKey || item.dataset.contentKey === draggedContentKey) return;
+  event.preventDefault();
+  item.classList.add("is-drop-target");
+}
+
+function handleDragLeave(event) {
+  const item = event.target.closest("[data-content-key]");
+  if (item) item.classList.remove("is-drop-target");
+}
+
+function handleDrop(event) {
+  const item = event.target.closest("[data-content-key]");
+  if (!item || !draggedContentKey) return;
+  event.preventDefault();
+  item.classList.remove("is-drop-target");
+  reorderContent(item.dataset.quizId, draggedContentKey, item.dataset.contentKey);
+  draggedContentKey = null;
+}
+
+function handleDragEnd() {
+  document.querySelectorAll(".is-dragging, .is-drop-target").forEach((item) => {
+    item.classList.remove("is-dragging", "is-drop-target");
+  });
+  draggedContentKey = null;
+}
+
+function reorderContent(quizId, fromKey, toKey) {
+  if (!fromKey || !toKey || fromKey === toKey) return;
+  const itemQuiz = quiz(quizId);
+  const order = [...cleanContentOrder(itemQuiz)];
+  const fromIndex = order.indexOf(fromKey);
+  const toIndex = order.indexOf(toKey);
+  if (fromIndex < 0 || toIndex < 0) return;
+  order.splice(fromIndex, 1);
+  order.splice(order.indexOf(toKey), 0, fromKey);
+  itemQuiz.contentOrder = order;
+  markQuizChanged(itemQuiz, "Assessment order changed");
+  render();
 }
 
 function moveRank(questionId, answerId, delta) {
@@ -1801,6 +2388,11 @@ function changeResult(assignmentId) {
 document.addEventListener("click", handleClick);
 document.addEventListener("input", handleInput);
 document.addEventListener("change", handleChange);
+document.addEventListener("dragstart", handleDragStart);
+document.addEventListener("dragover", handleDragOver);
+document.addEventListener("dragleave", handleDragLeave);
+document.addEventListener("drop", handleDrop);
+document.addEventListener("dragend", handleDragEnd);
 window.addEventListener("beforeunload", saveSession);
 
 render();

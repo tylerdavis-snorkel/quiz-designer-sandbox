@@ -37,6 +37,10 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - Admins can view attempts, enable retakes, lock quizzes, offboard contributors, change results, export CSV, and use bulk actions.
 - Audit logs are shown for admin changes.
 - Quizzes require a Google Docs guidelines link.
+- The quiz editor starts with "create a new quiz or choose an existing quiz."
+- Publish is disabled until an assessment has unpublished changes.
+- Course pages and questions can be reordered with drag and drop.
+- Questions, question types, hints, weights, answers, and correct answers can be edited inline.
 - Question and answer order can be randomized per attempt.
 - Reports show canonical answer text, not A/B/C/D.
 - Active quiz time excludes pauses.
