@@ -446,8 +446,8 @@ function normalizeQuiz(itemQuiz) {
   itemQuiz.draftDirty = Boolean(itemQuiz.draftDirty || itemQuiz.status === "Draft");
   itemQuiz.coursePages = (itemQuiz.coursePages || []).map((page, index) => ({
     id: page.id || `cp-${itemQuiz.id}-${index + 1}`,
-    title: page.title || "Untitled course page",
-    body: page.body || "",
+    title: page.title ?? "Untitled course page",
+    body: page.body ?? "",
     bodyHtml: page.bodyHtml || `<p>${escapeHtml(page.body || "")}</p>`
   }));
   itemQuiz.questions = (itemQuiz.questions || []).map((question, index) => normalizeQuestion(question, itemQuiz.id, index));
@@ -459,9 +459,9 @@ function normalizeQuestion(question, quizId, index) {
   const normalized = {
     id: question.id || `q-${quizId}-${index + 1}`,
     type: question.type || "Multiple choice",
-    weight: Number(question.weight || 1),
-    prompt: question.prompt || "Untitled question",
-    hint: question.hint || "",
+    weight: Number(question.weight ?? 1),
+    prompt: question.prompt ?? "Untitled question",
+    hint: question.hint ?? "",
     referenceLabel: "",
     resources: Array.isArray(question.resources) ? question.resources : [],
     answers: question.answers || [],
@@ -487,8 +487,8 @@ function normalizeQuestionByType(question) {
   }
   if (!question.answers.length) {
     question.answers = [
-      { id: `a-${Date.now()}`, text: "Correct answer", correct: true },
-      { id: `b-${Date.now()}`, text: "Distractor answer", correct: false }
+      { id: `a-${Date.now()}`, text: "", correct: true },
+      { id: `b-${Date.now()}`, text: "", correct: false }
     ];
   }
   if (question.type === "Ranking") {
@@ -531,6 +531,14 @@ function quizContentItems(itemQuiz) {
       : itemQuiz.questions.find((question) => question.id === id);
     return item ? { key, kind, item } : null;
   }).filter(Boolean);
+}
+
+function contentPosition(itemQuiz, key, kind) {
+  const matching = quizContentItems(itemQuiz).filter((entry) => entry.kind === kind);
+  return {
+    index: matching.findIndex((entry) => entry.key === key) + 1,
+    total: matching.length
+  };
 }
 
 function markQuizChanged(itemQuiz, action = "Assessment edited") {
@@ -898,7 +906,7 @@ function renderContributorHistory(history) {
             <th>Score</th>
             <th>Active time</th>
             <th>Submitted</th>
-            <th>Result</th>
+            <th>View</th>
           </tr>
         </thead>
         <tbody>
@@ -915,8 +923,7 @@ function renderContributorHistory(history) {
                 <td>${formatDate(latest.submittedAt)}</td>
                 <td>
                   <div class="row-actions">
-                    ${latest.status === "Passed" ? `<span class="check-badge"><span class="check-icon" aria-hidden="true"></span> Passed</span>` : ""}
-                    <button class="button small secondary" data-action="view-history-attempt" data-attempt-id="${latest.id}">${latest.status === "Passed" ? "View" : "History"}</button>
+                    <button class="button small secondary" data-action="view-history-attempt" data-attempt-id="${latest.id}">View</button>
                   </div>
                 </td>
               </tr>
@@ -1062,7 +1069,10 @@ function renderAdminSubTabs() {
   return `
     <div class="subtabs" aria-label="Admin sections">
       <button class="subtab ${adminSubView === "responses" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="responses">Quiz responses</button>
-      <button class="subtab ${adminSubView === "written" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="written">Written scoring${writtenCount ? ` (${writtenCount})` : ""}</button>
+      <button class="subtab ${adminSubView === "written" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="written">
+        Pending admin review
+        ${writtenCount ? `<span class="pending-count" aria-label="${writtenCount} pending">${writtenCount}</span>` : ""}
+      </button>
     </div>
   `;
 }
@@ -1165,7 +1175,7 @@ function writtenReviewRows() {
       person: contributor(attempt.contributorId),
       itemQuiz: quiz(attempt.quizId)
     }))
-    .filter((row) => row.person && row.itemQuiz)
+    .filter((row) => row.person && row.itemQuiz && !row.person.offboarded)
     .sort((a, b) => attemptTimeValue(b.attempt) - attemptTimeValue(a.attempt));
 }
 
@@ -1175,8 +1185,12 @@ function renderWrittenScoringPanel() {
     <div class="panel">
       <div class="panel-header">
         <div>
-          <h1 class="section-title">Written scoring</h1>
+          <h1 class="section-title">Pending admin review</h1>
           <div class="section-kicker">Long text responses land here until an admin assigns a score.</div>
+        </div>
+        <div class="pending-review-banner">
+          <span class="pending-x" aria-hidden="true">X</span>
+          <span>${rows.length} pending</span>
         </div>
       </div>
       <div class="panel-body">
@@ -1259,8 +1273,12 @@ function renderMakeAdminModal() {
 
 function adminStats() {
   const quizId = filters.metricQuiz;
-  const assignments = state.assignments.filter((item) => quizId === "All" || item.quizId === quizId);
-  const attempts = state.attempts.filter((attempt) => quizId === "All" || attempt.quizId === quizId);
+  const assignments = state.assignments
+    .filter((item) => quizId === "All" || item.quizId === quizId)
+    .filter((item) => !contributor(item.contributorId)?.offboarded);
+  const attempts = state.attempts
+    .filter((attempt) => quizId === "All" || attempt.quizId === quizId)
+    .filter((attempt) => !contributor(attempt.contributorId)?.offboarded);
   const allRows = assignments.map((item) => ({ item, status: adminStatus(item), latest: latestAttempt(item.contributorId, item.quizId) }));
   return {
     passed: attempts.filter((attempt) => attempt.status === "Passed").length,
@@ -1323,6 +1341,7 @@ function filteredAdminRows() {
       return { item, person, itemQuiz, latest, status: adminStatus(item) };
     })
     .filter((row) => {
+      if (!row.person || !row.itemQuiz || row.person.offboarded) return false;
       const search = filters.search.trim().toLowerCase();
       if (search && !`${row.person.name} ${row.person.email}`.toLowerCase().includes(search)) return false;
       if (filters.quiz !== "All" && row.itemQuiz.id !== filters.quiz) return false;
@@ -1492,33 +1511,35 @@ function renderEditor() {
         </div>
       </div>
       <div class="editor-grid">
-        <div class="panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="section-title small">Settings</h2>
-              <div class="section-kicker">Controls match the current product rules.</div>
-            </div>
-          </div>
-          <div class="panel-body settings-list">
-            <div class="publish-note">
-              <div class="strong">Publishing and dashboard assignment</div>
-              <div class="cell-sub">Publishing saves the assessment content. Assigning pushes it to contributor dashboards.</div>
-              <div class="pill-row">
-                <span class="status ${itemQuiz.draftDirty ? "retake-available" : "qualified"}">${itemQuiz.draftDirty ? "Unpublished changes" : "Content published"}</span>
-                <span class="status ${assignedCount ? "qualified" : "locked"}">${assignedCount} dashboard assignment${assignedCount === 1 ? "" : "s"}</span>
+        <div class="editor-side">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="section-title small">Settings</h2>
+                <div class="section-kicker">Controls match the current product rules.</div>
               </div>
             </div>
-            ${editorInput("Title", "title", itemQuiz.title)}
-            ${editorInput("Google Docs guidelines URL", "guidelinesUrl", itemQuiz.guidelinesUrl)}
-            ${editorNumber("Pass threshold", "passThreshold", itemQuiz.passThreshold, "%")}
-            ${editorNumber("Initial retake limit", "retakeLimit", itemQuiz.retakeLimit, "retakes")}
-            ${editorNumber("Estimated active time", "estimatedMinutes", itemQuiz.estimatedMinutes, "minutes")}
-            ${editorToggle("Project active", "projectActive", itemQuiz.projectActive)}
-            ${editorToggle("Randomize questions", "randomizeQuestions", itemQuiz.randomizeQuestions)}
-            ${editorToggle("Randomize answer choices", "randomizeAnswers", itemQuiz.randomizeAnswers)}
+            <div class="panel-body settings-list">
+              <div class="publish-note">
+                <div class="strong">Publishing and assign course</div>
+                <div class="cell-sub">Publishing saves the assessment content. Assigning pushes it to contributor dashboards.</div>
+                <div class="pill-row">
+                  <span class="status ${itemQuiz.draftDirty ? "retake-available" : "qualified"}">${itemQuiz.draftDirty ? "Unpublished changes" : "Content published"}</span>
+                  <span class="status ${assignedCount ? "qualified" : "locked"}">${assignedCount} course assignment${assignedCount === 1 ? "" : "s"}</span>
+                </div>
+              </div>
+              ${editorInput("Title", "title", itemQuiz.title)}
+              ${editorInput("Google Docs guidelines URL", "guidelinesUrl", itemQuiz.guidelinesUrl)}
+              ${editorNumber("Pass threshold", "passThreshold", itemQuiz.passThreshold, "%")}
+              ${editorNumber("Initial retake limit", "retakeLimit", itemQuiz.retakeLimit, "retakes")}
+              ${editorNumber("Estimated active time", "estimatedMinutes", itemQuiz.estimatedMinutes, "minutes")}
+              ${editorToggle("Project active", "projectActive", itemQuiz.projectActive)}
+              ${editorToggle("Randomize questions", "randomizeQuestions", itemQuiz.randomizeQuestions)}
+              ${editorToggle("Randomize answer choices", "randomizeAnswers", itemQuiz.randomizeAnswers)}
+            </div>
           </div>
+          ${renderAssignmentPanel(itemQuiz)}
         </div>
-        ${renderAssignmentPanel(itemQuiz)}
         <div class="panel builder-panel">
           <div class="panel-header">
             <div>
@@ -1526,8 +1547,8 @@ function renderEditor() {
               <div class="section-kicker">Drag blocks to reorder. Edit text, question type, answers, correct answers, weights, and hints inline.</div>
             </div>
             <div class="row-actions">
-              <button class="button secondary" data-action="add-course-page" data-quiz-id="${itemQuiz.id}">Add course page</button>
-              <button class="button" data-action="add-question" data-quiz-id="${itemQuiz.id}">Add question</button>
+              <button class="button secondary" data-action="add-course-page" data-quiz-id="${itemQuiz.id}">Add course page at end</button>
+              <button class="button" data-action="add-question" data-quiz-id="${itemQuiz.id}">Add question at end</button>
             </div>
           </div>
           <div class="panel-body">
@@ -1617,14 +1638,14 @@ function renderAssignmentPanel(itemQuiz) {
     <div class="panel assignment-panel">
       <div class="panel-header">
         <div>
-          <h2 class="section-title small">Dashboard assignment</h2>
-          <div class="section-kicker">Choose who sees this quiz on their contributor dashboard.</div>
+          <h2 class="section-title small">Assign course</h2>
+          <div class="section-kicker">Choose who sees this course on their contributor dashboard.</div>
         </div>
       </div>
       <div class="panel-body">
         <div class="publish-note">
           <div class="strong">${canAssign ? "Ready to assign" : "Publish content first"}</div>
-          <div class="cell-sub">${canAssign ? "Assigning makes the quiz appear under Required quizzes." : "Unpublished changes are not pushed to dashboards."}</div>
+          <div class="cell-sub">${canAssign ? "Assigning makes the course appear under Required quizzes." : "Unpublished changes are not pushed to dashboards."}</div>
           <div class="cell-sub">Emails come from the signed-in contributor roster or from this allowlist for people who have not signed in yet.</div>
         </div>
         <div style="height: 12px;"></div>
@@ -1658,20 +1679,34 @@ function renderAssignmentPanel(itemQuiz) {
 }
 
 function renderContentBlock(itemQuiz, entry, index, total) {
-  if (entry.kind === "course") return renderCourseEditorBlock(itemQuiz, entry.item, entry.key, index, total);
-  return renderQuestionEditorBlock(itemQuiz, entry.item, entry.key, index, total);
+  const position = contentPosition(itemQuiz, entry.key, entry.kind);
+  if (entry.kind === "course") return renderCourseEditorBlock(itemQuiz, entry.item, entry.key, position, index, total);
+  return renderQuestionEditorBlock(itemQuiz, entry.item, entry.key, position, index, total);
 }
 
-function renderCourseEditorBlock(itemQuiz, page, key, index, total) {
+function renderInsertMenu(itemQuiz, key) {
+  return `
+    <div class="insert-menu">
+      <button class="insert-button" type="button" aria-label="Add after this block">+</button>
+      <div class="insert-menu-options" role="menu">
+        <button type="button" data-action="insert-content" data-kind="course" data-after-key="${key}" data-quiz-id="${itemQuiz.id}">Course page</button>
+        <button type="button" data-action="insert-content" data-kind="question" data-after-key="${key}" data-quiz-id="${itemQuiz.id}">Question</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderCourseEditorBlock(itemQuiz, page, key, position, index, total) {
   return `
     <div class="builder-item draggable-item" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
       <div class="builder-top">
         <div>
-          <div class="builder-label"><span class="drag-handle" draggable="true" aria-label="Drag course page">::</span> Course page ${index + 1}</div>
-          <h3 class="builder-title">${escapeHtml(page.title)}</h3>
+          <div class="builder-label"><span class="drag-handle" draggable="true" aria-label="Drag course page">::</span> Course page ${position.index} of ${position.total}</div>
+          <h3 class="builder-title">${escapeHtml(page.title || "Untitled course page")}</h3>
         </div>
         <div class="row-actions">
           <span class="status not-started">Training</span>
+          ${renderInsertMenu(itemQuiz, key)}
           <button class="button small secondary" data-action="move-content" data-direction="up" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === 0 ? "disabled" : ""}>Move up</button>
           <button class="button small secondary" data-action="move-content" data-direction="down" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === total - 1 ? "disabled" : ""}>Move down</button>
           <button class="button small secondary" data-action="delete-course-page" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}">Delete</button>
@@ -1701,23 +1736,48 @@ function renderCourseEditorBlock(itemQuiz, page, key, index, total) {
 function renderRichToolbar(quizId, pageId) {
   return `
     <div class="rich-toolbar" data-rich-toolbar="${pageId}">
-      <button class="tool-button" title="Bold" data-action="rich-command" data-command="bold" data-quiz-id="${quizId}" data-page-id="${pageId}"><strong>B</strong></button>
-      <button class="tool-button" title="Italic" data-action="rich-command" data-command="italic" data-quiz-id="${quizId}" data-page-id="${pageId}"><em>I</em></button>
-      <button class="tool-button" title="Underline" data-action="rich-command" data-command="underline" data-quiz-id="${quizId}" data-page-id="${pageId}"><span style="text-decoration: underline;">U</span></button>
-      <button class="tool-button" title="Bullet list" data-action="rich-command" data-command="insertUnorderedList" data-quiz-id="${quizId}" data-page-id="${pageId}">List</button>
       <select class="select compact-select" data-action="rich-font" data-quiz-id="${quizId}" data-page-id="${pageId}" aria-label="Font">
-        <option value="">Font</option>
         <option value="Arial">Arial</option>
         <option value="Georgia">Georgia</option>
         <option value="Trebuchet MS">Trebuchet</option>
         <option value="Verdana">Verdana</option>
         <option value="Courier New">Courier</option>
       </select>
-      <label class="color-control" title="Text color">
-        <span>Color</span>
+      <button class="tool-button" title="Decrease font size" data-action="rich-command" data-command="fontSize" data-command-value="2" data-quiz-id="${quizId}" data-page-id="${pageId}">-</button>
+      <select class="select size-select" data-action="rich-size" data-quiz-id="${quizId}" data-page-id="${pageId}" aria-label="Font size">
+        <option value="">Size</option>
+        <option value="1">8</option>
+        <option value="2">10</option>
+        <option value="3">12</option>
+        <option value="4">14</option>
+        <option value="5">18</option>
+        <option value="6">24</option>
+        <option value="7">36</option>
+      </select>
+      <button class="tool-button" title="Increase font size" data-action="rich-command" data-command="fontSize" data-command-value="5" data-quiz-id="${quizId}" data-page-id="${pageId}">+</button>
+      <span class="toolbar-divider" aria-hidden="true"></span>
+      <button class="tool-button" title="Bold" data-action="rich-command" data-command="bold" data-quiz-id="${quizId}" data-page-id="${pageId}"><strong>B</strong></button>
+      <button class="tool-button" title="Italic" data-action="rich-command" data-command="italic" data-quiz-id="${quizId}" data-page-id="${pageId}"><em>I</em></button>
+      <button class="tool-button" title="Underline" data-action="rich-command" data-command="underline" data-quiz-id="${quizId}" data-page-id="${pageId}"><span style="text-decoration: underline;">U</span></button>
+      <label class="color-control icon-color" title="Text color">
+        <span>A</span>
         <input type="color" data-action="rich-color" data-quiz-id="${quizId}" data-page-id="${pageId}" value="#206ddc">
       </label>
-      <label class="button small secondary upload-button">
+      <label class="color-control icon-color" title="Highlight color">
+        <span>HL</span>
+        <input type="color" data-action="rich-highlight" data-quiz-id="${quizId}" data-page-id="${pageId}" value="#fff1a8">
+      </label>
+      <span class="toolbar-divider" aria-hidden="true"></span>
+      <button class="tool-button" title="Insert link" data-action="rich-command" data-command="createLink" data-quiz-id="${quizId}" data-page-id="${pageId}">Link</button>
+      <button class="tool-button" title="Align left" data-action="rich-command" data-command="justifyLeft" data-quiz-id="${quizId}" data-page-id="${pageId}">L</button>
+      <button class="tool-button" title="Align center" data-action="rich-command" data-command="justifyCenter" data-quiz-id="${quizId}" data-page-id="${pageId}">C</button>
+      <button class="tool-button" title="Align right" data-action="rich-command" data-command="justifyRight" data-quiz-id="${quizId}" data-page-id="${pageId}">R</button>
+      <button class="tool-button" title="Bullet list" data-action="rich-command" data-command="insertUnorderedList" data-quiz-id="${quizId}" data-page-id="${pageId}">&#8226;</button>
+      <button class="tool-button" title="Numbered list" data-action="rich-command" data-command="insertOrderedList" data-quiz-id="${quizId}" data-page-id="${pageId}">1.</button>
+      <button class="tool-button" title="Decrease indent" data-action="rich-command" data-command="outdent" data-quiz-id="${quizId}" data-page-id="${pageId}">&lt;</button>
+      <button class="tool-button" title="Increase indent" data-action="rich-command" data-command="indent" data-quiz-id="${quizId}" data-page-id="${pageId}">&gt;</button>
+      <button class="tool-button" title="Clear formatting" data-action="rich-command" data-command="removeFormat" data-quiz-id="${quizId}" data-page-id="${pageId}">Tx</button>
+      <label class="button small secondary upload-button" title="Add image">
         Add image
         <input type="file" accept="image/*" data-course-image-upload="${pageId}" data-quiz-id="${quizId}">
       </label>
@@ -1725,17 +1785,18 @@ function renderRichToolbar(quizId, pageId) {
   `;
 }
 
-function renderQuestionEditorBlock(itemQuiz, question, key, index, total) {
+function renderQuestionEditorBlock(itemQuiz, question, key, position, index, total) {
   const answerEditor = renderAnswerEditor(itemQuiz, question);
   return `
     <div class="builder-item draggable-item" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
       <div class="builder-top">
         <div>
-          <div class="builder-label"><span class="drag-handle" draggable="true" aria-label="Drag question">::</span> Question ${index + 1}</div>
-          <h3 class="builder-title">${escapeHtml(question.prompt)}</h3>
+          <div class="builder-label"><span class="drag-handle" draggable="true" aria-label="Drag question">::</span> Question ${position.index} of ${position.total}</div>
+          <h3 class="builder-title">${escapeHtml(question.prompt || "Untitled question")}</h3>
         </div>
         <div class="row-actions">
           <span class="status ${question.type === "Long text" ? "submitted" : "qualified"}">${question.type === "Long text" ? "Manual scoring" : "Auto scored"}</span>
+          ${renderInsertMenu(itemQuiz, key)}
           <button class="button small secondary" data-action="move-content" data-direction="up" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === 0 ? "disabled" : ""}>Move up</button>
           <button class="button small secondary" data-action="move-content" data-direction="down" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === total - 1 ? "disabled" : ""}>Move down</button>
           <button class="button small secondary" data-action="delete-question" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">Delete</button>
@@ -2086,7 +2147,7 @@ function renderQuizRunner() {
         <div>
           <div class="pill-row">
             <span class="status not-started">${session.preview ? "Preview" : "Active attempt"}</span>
-            <span class="status submitted">Step ${session.index + 1} of ${session.stepKeys.length}</span>
+            <span class="status submitted">${session.index + 1} of ${session.stepKeys.length}</span>
             <span class="status not-started">Active time ${formatSeconds(session.activeSeconds)}</span>
           </div>
           <h1 class="section-title" style="margin-top: 12px;">${escapeHtml(itemQuiz.title)}</h1>
@@ -2156,26 +2217,28 @@ function renderQuestionStep(question) {
         </div>
         <div class="panel-body">
           ${renderAnswerControl(question)}
-          <div style="height: 14px;"></div>
-          <button class="button secondary" data-action="toggle-hint" data-question-id="${question.id}">${session.hintOpen[question.id] ? "Hide hint" : "Show hint"}</button>
-          ${session.hintOpen[question.id] ? `<div style="height: 10px;"></div><div class="hint-box">${escapeHtml(question.hint)}</div>` : ""}
+          ${question.hint ? `<div style="height: 14px;"></div><button class="button secondary" data-action="toggle-hint" data-question-id="${question.id}">${session.hintOpen[question.id] ? "Hide hint" : "Show hint"}</button>` : ""}
+          ${question.hint && session.hintOpen[question.id] ? `<div style="height: 10px;"></div><div class="hint-box">${escapeHtml(question.hint)}</div>` : ""}
         </div>
       </section>
       <aside class="panel">
         <div class="panel-header">
           <div>
             <h2 class="section-title small">Reference</h2>
-            <div class="section-kicker">Optional question image</div>
+            <div class="section-kicker">Question images</div>
           </div>
         </div>
         <div class="panel-body">
-          <div class="reference-tile">
-            ${resources.length ? `${resources.length} resource image${resources.length === 1 ? "" : "s"} attached` : "No resource images uploaded"}
-          </div>
-          <div style="height: 14px;"></div>
-          <button class="button secondary" data-action="view-question-images" data-question-id="${question.id}" ${resources.length ? "" : "disabled"}>View images</button>
-          <div style="height: 14px;"></div>
-          <div class="muted">Hints are learning aids and do not reduce the score.</div>
+          ${resources.length ? `
+            <div class="reference-tile has-resources">
+              <div class="strong">Images needed for this question</div>
+              <div class="cell-sub">${resources.length} image${resources.length === 1 ? "" : "s"} available in a scrollable viewer.</div>
+            </div>
+            <div style="height: 10px;"></div>
+            <button class="button" data-action="view-question-images" data-question-id="${question.id}">Open images</button>
+          ` : `
+            <div class="reference-tile">No resource images uploaded</div>
+          `}
         </div>
       </aside>
     </div>
@@ -2189,7 +2252,7 @@ function renderImageViewer() {
   const index = Math.min(Math.max(imageViewer.index || 0, 0), Math.max(resources.length - 1, 0));
   const image = resources[index];
   return `
-    <div class="image-viewer-backdrop">
+    <div class="image-viewer-backdrop" data-modal-backdrop="images">
       <div class="image-viewer panel">
         <div class="panel-header">
           <div>
@@ -2438,10 +2501,39 @@ function csvCell(value) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
+function uniqueId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function blankCoursePage() {
+  return {
+    id: uniqueId("cp"),
+    title: "",
+    body: "",
+    bodyHtml: "<p><br></p>"
+  };
+}
+
+function blankQuestion() {
+  return normalizeQuestionByType({
+    id: uniqueId("qst"),
+    type: "Multiple choice",
+    weight: 1,
+    prompt: "",
+    hint: "",
+    referenceLabel: "",
+    resources: [],
+    answers: [
+      { id: uniqueId("ans"), text: "", correct: true },
+      { id: uniqueId("ans"), text: "", correct: false }
+    ]
+  });
+}
+
 function createNewQuiz() {
   const id = `q-${Date.now()}`;
-  const pageId = `cp-${Date.now()}`;
-  const questionId = `qst-${Date.now()}`;
+  const page = blankCoursePage();
+  const question = blankQuestion();
   const newQuiz = {
     id,
     title: "Untitled qualification quiz",
@@ -2455,35 +2547,36 @@ function createNewQuiz() {
     estimatedMinutes: 15,
     randomizeQuestions: true,
     randomizeAnswers: true,
-    coursePages: [
-      {
-        id: pageId,
-        title: "Course overview",
-        body: "Add the context contributors should read before starting the assessment.",
-        bodyHtml: "<p>Add the context contributors should read before starting the assessment.</p>"
-      }
-    ],
-    questions: [
-      normalizeQuestionByType({
-        id: questionId,
-        type: "Multiple choice",
-        weight: 1,
-        prompt: "New qualification question",
-        hint: "Add an optional hint shown during the quiz.",
-        referenceLabel: "",
-        resources: [],
-        answers: [
-          { id: `ans-${Date.now()}-1`, text: "Correct answer", correct: true },
-          { id: `ans-${Date.now()}-2`, text: "Distractor answer", correct: false }
-        ]
-      })
-    ],
-    contentOrder: [contentKey("course", pageId), contentKey("question", questionId)]
+    coursePages: [page],
+    questions: [question],
+    contentOrder: [contentKey("course", page.id), contentKey("question", question.id)]
   };
   state.quizzes.unshift(newQuiz);
   selectedQuizId = id;
   editorMode = "detail";
   addAudit("Quiz created", newQuiz.title);
+  render();
+}
+
+function insertContentAfter(quizId, afterKey, kind) {
+  const itemQuiz = quiz(quizId);
+  if (!itemQuiz) return;
+  const order = cleanContentOrder(itemQuiz);
+  const afterIndex = order.indexOf(afterKey);
+  const insertAt = afterIndex >= 0 ? afterIndex + 1 : order.length;
+  let key;
+  if (kind === "course") {
+    const page = blankCoursePage();
+    itemQuiz.coursePages.push(page);
+    key = contentKey("course", page.id);
+  } else {
+    const question = blankQuestion();
+    itemQuiz.questions.push(question);
+    key = contentKey("question", question.id);
+  }
+  order.splice(insertAt, 0, key);
+  itemQuiz.contentOrder = order;
+  markQuizChanged(itemQuiz, kind === "course" ? "Course page added" : "Question added");
   render();
 }
 
@@ -2666,7 +2759,7 @@ function addAnswer(quizId, questionId) {
   const itemQuiz = quiz(quizId);
   const question = getQuestion(itemQuiz, questionId);
   if (!question || question.type === "True/false" || question.type === "Long text") return;
-  const answer = { id: `ans-${Date.now()}`, text: "New answer", correct: false };
+  const answer = { id: uniqueId("ans"), text: "", correct: false };
   question.answers.push(answer);
   if (question.type === "Ranking") question.correctOrder = question.answers.map((item) => item.id);
   markQuizChanged(itemQuiz, "Answer added");
@@ -2744,7 +2837,12 @@ function applyRichCommand(quizId, pageId, command, value = null) {
   const editor = document.querySelector(`[data-course-rich="${pageId}"]`);
   if (!editor) return;
   editor.focus();
-  if (document.execCommand) document.execCommand(command, false, value);
+  let commandValue = value;
+  if (command === "createLink") {
+    commandValue = prompt("Paste the link URL");
+    if (!commandValue) return;
+  }
+  if (document.execCommand) document.execCommand(command, false, commandValue);
   updateCourseRichFromEditor(quizId, pageId);
 }
 
@@ -2827,6 +2925,11 @@ function handleClick(event) {
   }
   if (event.target.dataset.modalBackdrop === "make-admin") {
     makeAdminOpen = false;
+    render();
+    return;
+  }
+  if (event.target.dataset.modalBackdrop === "images") {
+    imageViewer = null;
     render();
     return;
   }
@@ -2986,8 +3089,11 @@ function handleClick(event) {
   if (action === "move-content") {
     moveContentByDirection(button.dataset.quizId, button.dataset.contentKey, button.dataset.direction);
   }
+  if (action === "insert-content") {
+    insertContentAfter(button.dataset.quizId, button.dataset.afterKey, button.dataset.kind);
+  }
   if (action === "rich-command") {
-    applyRichCommand(button.dataset.quizId, button.dataset.pageId, button.dataset.command);
+    applyRichCommand(button.dataset.quizId, button.dataset.pageId, button.dataset.command, button.dataset.commandValue || null);
   }
   if (action === "remove-question-image") {
     removeQuestionImage(button.dataset.quizId, button.dataset.questionId, button.dataset.imageId);
@@ -3043,12 +3149,7 @@ function handleClick(event) {
   }
   if (action === "add-course-page") {
     const itemQuiz = quiz(button.dataset.quizId);
-    const page = {
-      id: `cp-${Date.now()}`,
-      title: "New course page",
-      body: "Add project context, examples, or policy reminders.",
-      bodyHtml: "<p>Add project context, examples, or policy reminders.</p>"
-    };
+    const page = blankCoursePage();
     itemQuiz.coursePages.push(page);
     itemQuiz.contentOrder.push(contentKey("course", page.id));
     markQuizChanged(itemQuiz, "Course page added");
@@ -3056,19 +3157,7 @@ function handleClick(event) {
   }
   if (action === "add-question") {
     const itemQuiz = quiz(button.dataset.quizId);
-    const question = normalizeQuestionByType({
-      id: `q-${Date.now()}`,
-      type: "Multiple choice",
-      weight: 1,
-      prompt: "New qualification question",
-      hint: "Add a helpful testing hint.",
-      referenceLabel: "",
-      resources: [],
-      answers: [
-        { id: "a", text: "Correct answer", correct: true },
-        { id: "b", text: "Distractor answer", correct: false }
-      ]
-    });
+    const question = blankQuestion();
     itemQuiz.questions.push(question);
     itemQuiz.contentOrder.push(contentKey("question", question.id));
     markQuizChanged(itemQuiz, "Question added");
@@ -3133,6 +3222,9 @@ function handleInput(event) {
   if (target.dataset.action === "rich-color") {
     applyRichCommand(target.dataset.quizId, target.dataset.pageId, "foreColor", target.value);
   }
+  if (target.dataset.action === "rich-highlight") {
+    applyRichCommand(target.dataset.quizId, target.dataset.pageId, "hiliteColor", target.value);
+  }
   if (target.dataset.questionField && target.dataset.questionField !== "type") {
     const itemQuiz = quiz(target.dataset.quizId);
     const question = getQuestion(itemQuiz, target.dataset.questionId);
@@ -3174,10 +3266,15 @@ function handleChange(event) {
   }
   if (target.dataset.action === "rich-font" && target.value) {
     applyRichCommand(target.dataset.quizId, target.dataset.pageId, "fontName", target.value);
-    target.value = "";
+  }
+  if (target.dataset.action === "rich-size" && target.value) {
+    applyRichCommand(target.dataset.quizId, target.dataset.pageId, "fontSize", target.value);
   }
   if (target.dataset.action === "rich-color") {
     applyRichCommand(target.dataset.quizId, target.dataset.pageId, "foreColor", target.value);
+  }
+  if (target.dataset.action === "rich-highlight") {
+    applyRichCommand(target.dataset.quizId, target.dataset.pageId, "hiliteColor", target.value);
   }
   if (target.dataset.courseImageUpload) {
     uploadCourseImages(target.dataset.quizId, target.dataset.courseImageUpload, target.files);

@@ -39,7 +39,7 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - Admin metrics can be viewed across all quizzes or switched to one quiz at a time.
 - Failed and pending contributor history rows open a read-only history popup.
 - The Admin dashboard has inner tabs for quiz responses and written scoring.
-- Written long-text responses requiring admin scoring can be reviewed and scored from the Written scoring tab.
+- Written long-text responses requiring admin scoring can be reviewed and scored from the Pending admin review tab.
 - Offboarding has its own admin-only tab with searchable contributor-level offboard/restore controls and a dedicated offboarding log.
 - Audit logs are shown for admin changes.
 - Quizzes require a Google Docs guidelines link.
