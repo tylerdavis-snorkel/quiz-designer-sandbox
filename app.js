@@ -326,6 +326,7 @@ let editorMode = "home";
 let selectedAttemptId = null;
 let selectedAssignments = new Set();
 let draggedContentKey = null;
+let imageViewer = null;
 let session = null;
 let resultSnapshot = null;
 let timer = null;
@@ -380,7 +381,8 @@ function normalizeQuiz(itemQuiz) {
   itemQuiz.coursePages = (itemQuiz.coursePages || []).map((page, index) => ({
     id: page.id || `cp-${itemQuiz.id}-${index + 1}`,
     title: page.title || "Untitled course page",
-    body: page.body || ""
+    body: page.body || "",
+    bodyHtml: page.bodyHtml || `<p>${escapeHtml(page.body || "")}</p>`
   }));
   itemQuiz.questions = (itemQuiz.questions || []).map((question, index) => normalizeQuestion(question, itemQuiz.id, index));
   itemQuiz.contentOrder = cleanContentOrder(itemQuiz);
@@ -395,6 +397,7 @@ function normalizeQuestion(question, quizId, index) {
     prompt: question.prompt || "Untitled question",
     hint: question.hint || "",
     referenceLabel: "",
+    resources: Array.isArray(question.resources) ? question.resources : [],
     answers: question.answers || [],
     correctOrder: question.correctOrder || []
   };
@@ -1115,7 +1118,7 @@ function renderEditor() {
           </div>
           <div class="panel-body">
             <div class="builder-list" data-builder-list="${itemQuiz.id}">
-              ${contentItems.length ? contentItems.map((entry, index) => renderContentBlock(itemQuiz, entry, index)).join("") : `
+              ${contentItems.length ? contentItems.map((entry, index) => renderContentBlock(itemQuiz, entry, index, contentItems.length)).join("") : `
                 <div class="empty-state">Add a course page or question to start building this quiz.</div>
               `}
             </div>
@@ -1194,21 +1197,23 @@ function editorToggle(label, field, enabled) {
   `;
 }
 
-function renderContentBlock(itemQuiz, entry, index) {
-  if (entry.kind === "course") return renderCourseEditorBlock(itemQuiz, entry.item, entry.key, index);
-  return renderQuestionEditorBlock(itemQuiz, entry.item, entry.key, index);
+function renderContentBlock(itemQuiz, entry, index, total) {
+  if (entry.kind === "course") return renderCourseEditorBlock(itemQuiz, entry.item, entry.key, index, total);
+  return renderQuestionEditorBlock(itemQuiz, entry.item, entry.key, index, total);
 }
 
-function renderCourseEditorBlock(itemQuiz, page, key, index) {
+function renderCourseEditorBlock(itemQuiz, page, key, index, total) {
   return `
-    <div class="builder-item draggable-item" draggable="true" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
+    <div class="builder-item draggable-item" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
       <div class="builder-top">
         <div>
-          <div class="builder-label"><span class="drag-handle" aria-hidden="true">::</span> Course page ${index + 1}</div>
+          <div class="builder-label"><span class="drag-handle" draggable="true" aria-label="Drag course page">::</span> Course page ${index + 1}</div>
           <h3 class="builder-title">${escapeHtml(page.title)}</h3>
         </div>
         <div class="row-actions">
           <span class="status not-started">Training</span>
+          <button class="button small secondary" data-action="move-content" data-direction="up" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === 0 ? "disabled" : ""}>Move up</button>
+          <button class="button small secondary" data-action="move-content" data-direction="down" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === total - 1 ? "disabled" : ""}>Move down</button>
           <button class="button small secondary" data-action="delete-course-page" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}">Delete</button>
         </div>
       </div>
@@ -1219,24 +1224,60 @@ function renderCourseEditorBlock(itemQuiz, page, key, index) {
         </div>
         <div class="field full-span">
           <label>Course content</label>
-          <textarea class="textarea" data-course-field="body" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}">${escapeHtml(page.body)}</textarea>
+          ${renderRichToolbar(itemQuiz.id, page.id)}
+          <div
+            class="rich-editor"
+            contenteditable="true"
+            data-course-rich="${page.id}"
+            data-quiz-id="${itemQuiz.id}"
+            data-page-id="${page.id}"
+          >${page.bodyHtml || `<p>${escapeHtml(page.body || "")}</p>`}</div>
         </div>
       </div>
     </div>
   `;
 }
 
-function renderQuestionEditorBlock(itemQuiz, question, key, index) {
+function renderRichToolbar(quizId, pageId) {
+  return `
+    <div class="rich-toolbar" data-rich-toolbar="${pageId}">
+      <button class="tool-button" title="Bold" data-action="rich-command" data-command="bold" data-quiz-id="${quizId}" data-page-id="${pageId}"><strong>B</strong></button>
+      <button class="tool-button" title="Italic" data-action="rich-command" data-command="italic" data-quiz-id="${quizId}" data-page-id="${pageId}"><em>I</em></button>
+      <button class="tool-button" title="Underline" data-action="rich-command" data-command="underline" data-quiz-id="${quizId}" data-page-id="${pageId}"><span style="text-decoration: underline;">U</span></button>
+      <button class="tool-button" title="Bullet list" data-action="rich-command" data-command="insertUnorderedList" data-quiz-id="${quizId}" data-page-id="${pageId}">List</button>
+      <select class="select compact-select" data-action="rich-font" data-quiz-id="${quizId}" data-page-id="${pageId}" aria-label="Font">
+        <option value="">Font</option>
+        <option value="Arial">Arial</option>
+        <option value="Georgia">Georgia</option>
+        <option value="Trebuchet MS">Trebuchet</option>
+        <option value="Verdana">Verdana</option>
+        <option value="Courier New">Courier</option>
+      </select>
+      <label class="color-control" title="Text color">
+        <span>Color</span>
+        <input type="color" data-action="rich-color" data-quiz-id="${quizId}" data-page-id="${pageId}" value="#206ddc">
+      </label>
+      <label class="button small secondary upload-button">
+        Add image
+        <input type="file" accept="image/*" data-course-image-upload="${pageId}" data-quiz-id="${quizId}">
+      </label>
+    </div>
+  `;
+}
+
+function renderQuestionEditorBlock(itemQuiz, question, key, index, total) {
   const answerEditor = renderAnswerEditor(itemQuiz, question);
   return `
-    <div class="builder-item draggable-item" draggable="true" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
+    <div class="builder-item draggable-item" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
       <div class="builder-top">
         <div>
-          <div class="builder-label"><span class="drag-handle" aria-hidden="true">::</span> Question ${index + 1}</div>
+          <div class="builder-label"><span class="drag-handle" draggable="true" aria-label="Drag question">::</span> Question ${index + 1}</div>
           <h3 class="builder-title">${escapeHtml(question.prompt)}</h3>
         </div>
         <div class="row-actions">
           <span class="status ${question.type === "Long text" ? "submitted" : "qualified"}">${question.type === "Long text" ? "Manual scoring" : "Auto scored"}</span>
+          <button class="button small secondary" data-action="move-content" data-direction="up" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === 0 ? "disabled" : ""}>Move up</button>
+          <button class="button small secondary" data-action="move-content" data-direction="down" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === total - 1 ? "disabled" : ""}>Move down</button>
           <button class="button small secondary" data-action="delete-question" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">Delete</button>
         </div>
       </div>
@@ -1260,7 +1301,37 @@ function renderQuestionEditorBlock(itemQuiz, question, key, index) {
           <input class="input" value="${escapeHtml(question.hint || "")}" data-question-field="hint" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">
         </div>
       </div>
+      ${renderQuestionResources(itemQuiz, question)}
       ${answerEditor}
+    </div>
+  `;
+}
+
+function renderQuestionResources(itemQuiz, question) {
+  const resources = question.resources || [];
+  return `
+    <div class="resource-editor">
+      <div class="answer-editor-header">
+        <div>
+          <div class="strong">Question resource images</div>
+          <div class="cell-sub">Contributors see these through a View images button while answering this question.</div>
+        </div>
+        <label class="button small secondary upload-button">
+          Upload image
+          <input type="file" accept="image/*" multiple data-question-image-upload="${question.id}" data-quiz-id="${itemQuiz.id}">
+        </label>
+      </div>
+      ${resources.length ? `
+        <div class="resource-grid">
+          ${resources.map((image) => `
+            <div class="resource-thumb">
+              <img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.name)}">
+              <div class="cell-sub">${escapeHtml(image.name)}</div>
+              <button class="button small ghost" data-action="remove-question-image" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-image-id="${image.id}">Remove</button>
+            </div>
+          `).join("")}
+        </div>
+      ` : `<div class="empty-state compact-empty">No resource images uploaded yet.</div>`}
     </div>
   `;
 }
@@ -1426,6 +1497,7 @@ function questionStats(itemQuiz) {
 }
 
 function startQuiz(quizId, preview = false) {
+  imageViewer = null;
   const itemQuiz = quiz(quizId);
   const item = state.assignments.find((candidate) => candidate.contributorId === state.currentContributorId && candidate.quizId === quizId);
   let attempt = !preview ? latestAttempt(state.currentContributorId, quizId) : null;
@@ -1579,6 +1651,7 @@ function renderQuizRunner() {
           <button class="button" data-action="submit-quiz" ${session.index === session.stepKeys.length - 1 ? "" : "disabled"}>Submit</button>
         </div>
       </div>
+      ${imageViewer ? renderImageViewer() : ""}
     </main>
   `;
 }
@@ -1601,13 +1674,14 @@ function renderCourseStep(page) {
         </div>
       </div>
       <div class="panel-body">
-        <p class="muted" style="max-width: 760px;">${escapeHtml(page.body)}</p>
+        <div class="course-content">${page.bodyHtml || `<p>${escapeHtml(page.body || "")}</p>`}</div>
       </div>
     </section>
   `;
 }
 
 function renderQuestionStep(question) {
+  const resources = question.resources || [];
   return `
     <div class="question-layout">
       <section class="panel">
@@ -1632,11 +1706,44 @@ function renderQuestionStep(question) {
           </div>
         </div>
         <div class="panel-body">
-          <div class="reference-tile">${escapeHtml(question.referenceLabel || "No reference image uploaded")}</div>
+          <div class="reference-tile">
+            ${resources.length ? `${resources.length} resource image${resources.length === 1 ? "" : "s"} attached` : "No resource images uploaded"}
+          </div>
+          <div style="height: 14px;"></div>
+          <button class="button secondary" data-action="view-question-images" data-question-id="${question.id}" ${resources.length ? "" : "disabled"}>View images</button>
           <div style="height: 14px;"></div>
           <div class="muted">Hints are learning aids and do not reduce the score.</div>
         </div>
       </aside>
+    </div>
+  `;
+}
+
+function renderImageViewer() {
+  const itemQuiz = quiz(imageViewer.quizId);
+  const question = getQuestion(itemQuiz, imageViewer.questionId);
+  const resources = question?.resources || [];
+  return `
+    <div class="image-viewer-backdrop">
+      <div class="image-viewer panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="section-title small">Question resource images</h2>
+            <div class="section-kicker">${escapeHtml(question?.prompt || "")}</div>
+          </div>
+          <button class="button ghost" data-action="close-images">Close</button>
+        </div>
+        <div class="panel-body">
+          <div class="image-viewer-grid">
+            ${resources.map((image) => `
+              <figure class="image-viewer-figure">
+                <img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.name)}">
+                <figcaption>${escapeHtml(image.name)}</figcaption>
+              </figure>
+            `).join("")}
+          </div>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -1885,7 +1992,8 @@ function createNewQuiz() {
       {
         id: pageId,
         title: "Course overview",
-        body: "Add the context contributors should read before starting the assessment."
+        body: "Add the context contributors should read before starting the assessment.",
+        bodyHtml: "<p>Add the context contributors should read before starting the assessment.</p>"
       }
     ],
     questions: [
@@ -1896,6 +2004,7 @@ function createNewQuiz() {
         prompt: "New qualification question",
         hint: "Add an optional hint shown during the quiz.",
         referenceLabel: "",
+        resources: [],
         answers: [
           { id: `ans-${Date.now()}-1`, text: "Correct answer", correct: true },
           { id: `ans-${Date.now()}-2`, text: "Distractor answer", correct: false }
@@ -2005,6 +2114,92 @@ function updateQuestionType(quizId, questionId, type) {
   render();
 }
 
+function moveContentByDirection(quizId, key, direction) {
+  const itemQuiz = quiz(quizId);
+  const order = cleanContentOrder(itemQuiz);
+  const index = order.indexOf(key);
+  const nextIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
+  [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+  itemQuiz.contentOrder = order;
+  markQuizChanged(itemQuiz, "Assessment order changed");
+  render();
+}
+
+function applyRichCommand(quizId, pageId, command, value = null) {
+  const editor = document.querySelector(`[data-course-rich="${pageId}"]`);
+  if (!editor) return;
+  editor.focus();
+  if (document.execCommand) document.execCommand(command, false, value);
+  updateCourseRichFromEditor(quizId, pageId);
+}
+
+function updateCourseRichFromEditor(quizId, pageId) {
+  const itemQuiz = quiz(quizId);
+  const page = getCoursePage(itemQuiz, pageId);
+  const editor = document.querySelector(`[data-course-rich="${pageId}"]`);
+  if (!page || !editor) return;
+  page.bodyHtml = editor.innerHTML;
+  page.body = editor.innerText || "";
+  markQuizChanged(itemQuiz, null);
+}
+
+function readImageFiles(fileList) {
+  const files = Array.from(fileList || []).filter((file) => file.type.startsWith("image/"));
+  return Promise.all(files.map((file, index) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      id: `img-${Date.now()}-${index}`,
+      name: file.name,
+      src: reader.result
+    });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  })));
+}
+
+async function uploadCourseImages(quizId, pageId, fileList) {
+  const itemQuiz = quiz(quizId);
+  const page = getCoursePage(itemQuiz, pageId);
+  if (!page) return;
+  const editor = document.querySelector(`[data-course-rich="${pageId}"]`);
+  if (editor) {
+    page.bodyHtml = editor.innerHTML;
+    page.body = editor.innerText || "";
+  }
+  const images = await readImageFiles(fileList);
+  if (!images.length) return;
+  const imageHtml = images.map((image) => `
+    <figure class="course-image">
+      <img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.name)}">
+      <figcaption>${escapeHtml(image.name)}</figcaption>
+    </figure>
+  `).join("");
+  page.bodyHtml = `${page.bodyHtml || ""}${imageHtml}`;
+  markQuizChanged(itemQuiz, "Course image uploaded");
+  render();
+}
+
+async function uploadQuestionImages(quizId, questionId, fileList) {
+  const itemQuiz = quiz(quizId);
+  const question = getQuestion(itemQuiz, questionId);
+  if (!question) return;
+  const images = await readImageFiles(fileList);
+  if (!images.length) return;
+  question.resources = [...(question.resources || []), ...images];
+  markQuizChanged(itemQuiz, "Question resource image uploaded");
+  render();
+}
+
+function removeQuestionImage(quizId, questionId, imageId) {
+  const itemQuiz = quiz(quizId);
+  const question = getQuestion(itemQuiz, questionId);
+  if (!question) return;
+  question.resources = (question.resources || []).filter((image) => image.id !== imageId);
+  markQuizChanged(itemQuiz, "Question resource image removed");
+  render();
+}
+
 function handleClick(event) {
   const button = event.target.closest("[data-action]");
   if (!button) return;
@@ -2029,6 +2224,7 @@ function handleClick(event) {
   if (action === "leave-quiz") {
     saveSession();
     session = null;
+    imageViewer = null;
     view = "contributor";
     render();
   }
@@ -2052,6 +2248,7 @@ function handleClick(event) {
   if (action === "submit-quiz") submitQuiz();
   if (action === "return-dashboard") {
     resultSnapshot = null;
+    imageViewer = null;
     view = "contributor";
     render();
   }
@@ -2119,6 +2316,23 @@ function handleClick(event) {
   if (action === "create-quiz") {
     createNewQuiz();
   }
+  if (action === "move-content") {
+    moveContentByDirection(button.dataset.quizId, button.dataset.contentKey, button.dataset.direction);
+  }
+  if (action === "rich-command") {
+    applyRichCommand(button.dataset.quizId, button.dataset.pageId, button.dataset.command);
+  }
+  if (action === "remove-question-image") {
+    removeQuestionImage(button.dataset.quizId, button.dataset.questionId, button.dataset.imageId);
+  }
+  if (action === "view-question-images") {
+    imageViewer = { quizId: session.quizId, questionId: button.dataset.questionId };
+    render();
+  }
+  if (action === "close-images") {
+    imageViewer = null;
+    render();
+  }
   if (action === "toggle-editor") {
     const itemQuiz = quiz(selectedQuizId);
     itemQuiz[button.dataset.editorField] = !itemQuiz[button.dataset.editorField];
@@ -2158,6 +2372,7 @@ function handleClick(event) {
       prompt: "New qualification question",
       hint: "Add a helpful testing hint.",
       referenceLabel: "",
+      resources: [],
       answers: [
         { id: "a", text: "Correct answer", correct: true },
         { id: "b", text: "Distractor answer", correct: false }
@@ -2215,6 +2430,18 @@ function handleInput(event) {
       markQuizChanged(itemQuiz, null);
     }
   }
+  if (target.dataset.courseRich) {
+    const itemQuiz = quiz(target.dataset.quizId);
+    const page = getCoursePage(itemQuiz, target.dataset.pageId);
+    if (page) {
+      page.bodyHtml = target.innerHTML;
+      page.body = target.innerText || "";
+      markQuizChanged(itemQuiz, null);
+    }
+  }
+  if (target.dataset.action === "rich-color") {
+    applyRichCommand(target.dataset.quizId, target.dataset.pageId, "foreColor", target.value);
+  }
   if (target.dataset.questionField && target.dataset.questionField !== "type") {
     const itemQuiz = quiz(target.dataset.quizId);
     const question = getQuestion(itemQuiz, target.dataset.questionId);
@@ -2251,6 +2478,21 @@ function handleChange(event) {
   if (target.dataset.questionField === "type") {
     updateQuestionType(target.dataset.quizId, target.dataset.questionId, target.value);
   }
+  if (target.dataset.action === "rich-font" && target.value) {
+    applyRichCommand(target.dataset.quizId, target.dataset.pageId, "fontName", target.value);
+    target.value = "";
+  }
+  if (target.dataset.action === "rich-color") {
+    applyRichCommand(target.dataset.quizId, target.dataset.pageId, "foreColor", target.value);
+  }
+  if (target.dataset.courseImageUpload) {
+    uploadCourseImages(target.dataset.quizId, target.dataset.courseImageUpload, target.files);
+    target.value = "";
+  }
+  if (target.dataset.questionImageUpload) {
+    uploadQuestionImages(target.dataset.quizId, target.dataset.questionImageUpload, target.files);
+    target.value = "";
+  }
   if (target.dataset.answerCorrect) {
     setCorrectAnswer(target.dataset.quizId, target.dataset.answerCorrect, target.dataset.answerId, target.checked);
   }
@@ -2275,6 +2517,7 @@ function handleChange(event) {
 }
 
 function handleDragStart(event) {
+  if (!event.target.closest(".drag-handle")) return;
   const item = event.target.closest("[data-content-key]");
   if (!item) return;
   draggedContentKey = item.dataset.contentKey;

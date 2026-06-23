@@ -40,14 +40,17 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - The quiz editor starts with "create a new quiz or choose an existing quiz."
 - Publish is disabled until an assessment has unpublished changes.
 - Course pages and questions can be reordered with drag and drop.
+- Course pages and questions can also be reordered with Move up / Move down buttons.
 - Questions, question types, hints, weights, answers, and correct answers can be edited inline.
+- Course pages have a rich text editor with bold, italic, underline, lists, fonts, colors, and inline image upload.
+- Questions support uploaded resource images. Contributors open these through a View images button while taking the quiz.
 - Question and answer order can be randomized per attempt.
 - Reports show canonical answer text, not A/B/C/D.
 - Active quiz time excludes pauses.
 
 ## Sandbox Notes
 
-The app stores sample state in browser local storage so you can click around and reset it. That is only for the sandbox. A production build should use a real database for contributors, quiz definitions, assignments, attempts, audit logs, and admin notes.
+The app stores sample state in browser local storage so you can click around and reset it. Uploaded images are also stored locally as browser data URLs in this sandbox. That is only for demos. A production build should use a real database for contributors, quiz definitions, assignments, attempts, audit logs, and admin notes, plus object storage for uploaded images and course assets.
 
 ## Suggested Production Data Model
 
