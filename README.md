@@ -1,4 +1,4 @@
-# Qualify Lab Sandbox
+# Project Otter Assessment Dashboard
 
 This is a working front-end sandbox for the AI project quiz and assessment product.
 
@@ -51,6 +51,7 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - In the sandbox, emails are sample data or pasted allowlist entries. In production, contributor emails should come from verified sign-in identity and/or the project roster.
 - Admin contributor filters focus on qualification/progress statuses instead of operational states like locked/offboarded/project inactive.
 - The sandbox includes admin and contributor accounts. Contributors only see the Contributor tab.
+- The default sandbox roster has one admin account and two contributor accounts.
 - Admins can grant admin access by typing an email from the Admin dashboard.
 - Question and answer order can be randomized per attempt.
 - Reports show canonical answer text, not A/B/C/D.

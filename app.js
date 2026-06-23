@@ -1,5 +1,5 @@
-const STORAGE_KEY = "qualifyLabSandboxState.v1";
-const PROJECT_NAME = "Aurora Response Quality";
+const STORAGE_KEY = "projectOtterAssessmentState.v1";
+const PROJECT_NAME = "Project Otter";
 
 const app = document.querySelector("#app");
 
@@ -7,16 +7,97 @@ const initialState = () => ({
   theme: "light",
   projectName: PROJECT_NAME,
   currentContributorId: "c-alex",
-  selectedQuizId: "q-safety",
+  selectedQuizId: "q-otter",
   quizzes: [
     {
-      id: "q-safety",
-      title: "RLHF Safety Review Qualification",
+      id: "q-otter",
+      title: "Project Otter Quiz",
       project: PROJECT_NAME,
       status: "Published",
       draftDirty: false,
       projectActive: true,
-      guidelinesUrl: "https://docs.google.com/document/d/example-guidelines-safety",
+      guidelinesUrl: "https://docs.google.com/document/d/example-project-otter-guidelines",
+      passThreshold: 80,
+      retakeLimit: 0,
+      estimatedMinutes: 15,
+      randomizeQuestions: true,
+      randomizeAnswers: true,
+      coursePages: [
+        {
+          id: "cp-otter-1",
+          title: "Before you start",
+          body: "Project Otter tasks ask contributors to compare model responses against the guideline document, user intent, and task-specific constraints."
+        },
+        {
+          id: "cp-otter-2",
+          title: "Scoring posture",
+          body: "Use the rubric as the source of truth. A polished response can still be wrong when it ignores a requirement."
+        }
+      ],
+      contentOrder: ["course:cp-otter-1", "course:cp-otter-2", "question:qo-1", "question:qo-2", "question:qo-3", "question:qo-4"],
+      questions: [
+        {
+          id: "qo-1",
+          type: "Multiple choice",
+          weight: 2,
+          prompt: "A task asks you to compare two model responses. What should you do first?",
+          hint: "Start with the source of truth for the project, not your memory from another task.",
+          referenceLabel: "",
+          answers: [
+            { id: "a", text: "Read the guideline document and task-specific instructions", correct: true },
+            { id: "b", text: "Choose the answer that sounds more confident", correct: false },
+            { id: "c", text: "Prefer the longer response", correct: false },
+            { id: "d", text: "Use the rule from the last project you worked on", correct: false }
+          ]
+        },
+        {
+          id: "qo-2",
+          type: "True/false",
+          weight: 1,
+          prompt: "If a response is polished and friendly, it should pass even if it ignores a required instruction.",
+          hint: "Tone does not override task requirements.",
+          answers: [
+            { id: "true", text: "True", correct: false },
+            { id: "false", text: "False", correct: true }
+          ]
+        },
+        {
+          id: "qo-3",
+          type: "Multi-select",
+          weight: 2,
+          prompt: "Which items should be checked before submitting a rating?",
+          hint: "Look for the user request, project rules, and evidence quality.",
+          answers: [
+            { id: "a", text: "Prompt constraints and required format", correct: true },
+            { id: "b", text: "Policy or safety requirements", correct: true },
+            { id: "c", text: "Whether the answer is longer than the other answer", correct: false },
+            { id: "d", text: "Unsupported or contradicted claims", correct: true }
+          ]
+        },
+        {
+          id: "qo-4",
+          type: "Scenario review",
+          weight: 3,
+          prompt: "A response gives a confident answer but invents a detail that was not in the prompt or source. What should you do?",
+          hint: "Confidence is not evidence.",
+          referenceLabel: "",
+          answers: [
+            { id: "a", text: "Accept it because it sounds helpful", correct: false },
+            { id: "b", text: "Lower the rating and note that the response is unsupported", correct: true },
+            { id: "c", text: "Ignore the invented detail if the rest is correct", correct: false },
+            { id: "d", text: "Mark the task impossible", correct: false }
+          ]
+        }
+      ]
+    },
+    {
+      id: "q-safety",
+      title: "Safety Review Scenarios",
+      project: PROJECT_NAME,
+      status: "Published",
+      draftDirty: false,
+      projectActive: true,
+      guidelinesUrl: "https://docs.google.com/document/d/example-safety-review-guidelines",
       passThreshold: 82,
       retakeLimit: 0,
       estimatedMinutes: 18,
@@ -25,53 +106,49 @@ const initialState = () => ({
       coursePages: [
         {
           id: "cp-safety-1",
-          title: "Rating posture",
-          body: "Start with the project guidelines, compare the prompt against both answers, and only then score the response."
-        },
-        {
-          id: "cp-safety-2",
-          title: "Safety checks",
-          body: "Flag unsafe content even when the answer is otherwise fluent or helpful."
+          title: "Safety review basics",
+          body: "Safety issues should be recorded even when one response is still better overall."
         }
       ],
-      contentOrder: ["course:cp-safety-1", "course:cp-safety-2", "question:qs-1", "question:qs-2", "question:qs-3", "question:qs-4", "question:qs-5"],
+      contentOrder: ["course:cp-safety-1", "question:qs-1", "question:qs-2", "question:qs-3", "question:qs-4"],
       questions: [
         {
           id: "qs-1",
           type: "Multiple choice",
           weight: 2,
-          prompt: "A task asks you to compare two model responses. What is the safest first step?",
-          hint: "The project document is the source of truth, even when the task feels familiar.",
+          prompt: "If both responses contain a safety issue, what should you do?",
+          hint: "Selection and issue reporting are separate judgments.",
           referenceLabel: "",
           answers: [
-            { id: "a", text: "Read the current project guidelines and task-specific rubric", correct: true },
-            { id: "b", text: "Pick the answer that sounds more natural", correct: false },
-            { id: "c", text: "Prefer the longer response", correct: false },
-            { id: "d", text: "Use the same rule from a different project", correct: false }
+            { id: "a", text: "Choose the less severe response and record the safety issue", correct: true },
+            { id: "b", text: "Choose the less severe response without any note", correct: false },
+            { id: "c", text: "Mark both responses as automatically equal", correct: false },
+            { id: "d", text: "Skip the task immediately", correct: false }
           ]
         },
         {
           id: "qs-2",
-          type: "Multi-select",
-          weight: 2,
-          prompt: "Which signals should affect a factuality rating?",
-          hint: "Factuality is about support, contradiction, and time-sensitive claims.",
+          type: "True/false",
+          weight: 1,
+          prompt: "A harmless refusal can still be low quality if the user request was allowed and answerable.",
+          hint: "Safety and helpfulness both matter.",
           answers: [
-            { id: "a", text: "A claim contradicts the provided source", correct: true },
-            { id: "b", text: "The response includes unsupported statistics", correct: true },
-            { id: "c", text: "The answer uses a confident tone", correct: false },
-            { id: "d", text: "The response makes date-sensitive claims", correct: true }
+            { id: "true", text: "True", correct: true },
+            { id: "false", text: "False", correct: false }
           ]
         },
         {
           id: "qs-3",
-          type: "True/false",
-          weight: 1,
-          prompt: "If both responses contain a safety issue, it is enough to choose the less unsafe response without flagging the issue.",
-          hint: "Selection and issue reporting are separate judgments.",
+          type: "Multiple choice",
+          weight: 2,
+          prompt: "A response follows the safety policy but ignores the requested format. How should that affect the rating?",
+          hint: "Policy compliance is necessary, but not the only criterion.",
+          referenceLabel: "",
           answers: [
-            { id: "true", text: "True", correct: false },
-            { id: "false", text: "False", correct: true }
+            { id: "a", text: "It can still lose quality points for missing the format", correct: true },
+            { id: "b", text: "It must receive a perfect score", correct: false },
+            { id: "c", text: "The format should never matter", correct: false },
+            { id: "d", text: "Only the longer response should win", correct: false }
           ]
         },
         {
@@ -81,241 +158,179 @@ const initialState = () => ({
           prompt: "Put the review workflow in the recommended order.",
           hint: "Move from understanding, to evidence, to scoring, to explanation.",
           answers: [
-            { id: "a", text: "Read the prompt and project guidelines" },
-            { id: "b", text: "Inspect evidence and constraints" },
+            { id: "a", text: "Read the prompt and guidelines" },
+            { id: "b", text: "Check safety and task constraints" },
             { id: "c", text: "Apply the rubric rating" },
             { id: "d", text: "Write a concise rationale" }
           ],
           correctOrder: ["a", "b", "c", "d"]
-        },
-        {
-          id: "qs-5",
-          type: "Scenario review",
-          weight: 3,
-          prompt: "Two responses are similarly helpful, but one ignores a policy constraint from the prompt. What should you do?",
-          hint: "A subtle policy miss can matter more than polish.",
-          referenceLabel: "",
-          answers: [
-            { id: "a", text: "Choose the polished response because the user experience is better", correct: false },
-            { id: "b", text: "Choose the response that follows the policy constraint and note the issue", correct: true },
-            { id: "c", text: "Mark both as equal", correct: false },
-            { id: "d", text: "Skip the task", correct: false }
-          ]
-        }
-      ]
-    },
-    {
-      id: "q-multimodal",
-      title: "Multimodal Rubric Calibration",
-      project: PROJECT_NAME,
-      status: "Published",
-      draftDirty: false,
-      projectActive: false,
-      guidelinesUrl: "https://docs.google.com/document/d/example-guidelines-multimodal",
-      passThreshold: 80,
-      retakeLimit: 1,
-      estimatedMinutes: 14,
-      randomizeQuestions: true,
-      randomizeAnswers: true,
-      coursePages: [],
-      contentOrder: ["question:qm-1"],
-      questions: [
-        {
-          id: "qm-1",
-          type: "Multiple choice",
-          weight: 2,
-          prompt: "When an image reference is ambiguous, what should the contributor do?",
-          hint: "Uncertainty should be represented in the rating.",
-          referenceLabel: "",
-          answers: [
-            { id: "a", text: "Use only visible evidence from the image", correct: true },
-            { id: "b", text: "Infer hidden details if the response sounds likely", correct: false },
-            { id: "c", text: "Ignore the image and rate text only", correct: false }
-          ]
         }
       ]
     },
     {
       id: "q-search",
-      title: "Search Quality Scenario Review",
+      title: "Search Quality Calibration",
       project: PROJECT_NAME,
-      status: "Draft",
-      draftDirty: true,
+      status: "Published",
+      draftDirty: false,
       projectActive: true,
-      guidelinesUrl: "https://docs.google.com/document/d/example-guidelines-search",
+      guidelinesUrl: "https://docs.google.com/document/d/example-search-quality-guidelines",
       passThreshold: 85,
       retakeLimit: 0,
-      estimatedMinutes: 24,
+      estimatedMinutes: 16,
       randomizeQuestions: true,
       randomizeAnswers: true,
       coursePages: [
         {
           id: "cp-search-1",
-          title: "Scenario tasking",
-          body: "Some tasks ask contributors to reason as if they are doing production work before answering."
+          title: "Freshness and intent",
+          body: "Search quality tasks require contributors to decide whether results satisfy the user's intent and freshness needs."
         }
       ],
-      contentOrder: ["course:cp-search-1", "question:qq-1", "question:qq-2"],
+      contentOrder: ["course:cp-search-1", "question:qsearch-1", "question:qsearch-2", "question:qsearch-3"],
       questions: [
         {
-          id: "qq-1",
-          type: "Long text",
-          weight: 4,
-          prompt: "Review this search scenario and explain which result should be rated higher.",
-          hint: "Use the rubric language and cite the decision point.",
+          id: "qsearch-1",
+          type: "Multiple choice",
+          weight: 2,
+          prompt: "A user asks for the latest policy update. Which result should score higher?",
+          hint: "Freshness matters when the query is current.",
           referenceLabel: "",
-          answers: []
+          answers: [
+            { id: "a", text: "A recent source that directly addresses the update", correct: true },
+            { id: "b", text: "An older source with a broader overview", correct: false },
+            { id: "c", text: "A forum post with no date", correct: false },
+            { id: "d", text: "A result that only mentions a related product", correct: false }
+          ]
         },
         {
-          id: "qq-2",
+          id: "qsearch-2",
           type: "True/false",
           weight: 1,
-          prompt: "A stale result can still be high quality when the user asks for current information.",
-          hint: "Current-information needs change the scoring.",
+          prompt: "A stale result can be acceptable when the user asks for historical background.",
+          hint: "The user's intent determines whether freshness is required.",
           answers: [
-            { id: "true", text: "True", correct: false },
-            { id: "false", text: "False", correct: true }
+            { id: "true", text: "True", correct: true },
+            { id: "false", text: "False", correct: false }
           ]
+        },
+        {
+          id: "qsearch-3",
+          type: "Long text",
+          weight: 4,
+          prompt: "Briefly explain how you would compare two search results when one is newer and the other is more authoritative.",
+          hint: "Name the tradeoff and connect it to the user's intent.",
+          referenceLabel: "",
+          answers: []
         }
       ]
     }
   ],
   contributors: [
     { id: "c-alex", name: "Alex Rivera", email: "alex.rivera@example.com", cohort: "June onboarding", role: "contributor", offboarded: false },
-    { id: "c-maya", name: "Maya Chen", email: "maya.chen@example.com", cohort: "June onboarding", role: "admin", offboarded: false },
-    { id: "c-jordan", name: "Jordan Reed", email: "jordan.reed@example.com", cohort: "May refresh", role: "admin", offboarded: false },
     { id: "c-nia", name: "Nia Patel", email: "nia.patel@example.com", cohort: "June onboarding", role: "contributor", offboarded: false },
-    { id: "c-sam", name: "Sam Ortiz", email: "sam.ortiz@example.com", cohort: "May refresh", role: "contributor", offboarded: false },
-    { id: "c-elle", name: "Elle Morgan", email: "elle.morgan@example.com", cohort: "Escalations", role: "contributor", offboarded: false },
-    { id: "c-devon", name: "Devon Brooks", email: "devon.brooks@example.com", cohort: "June onboarding", role: "contributor", offboarded: true }
+    { id: "c-maya", name: "Maya Chen", email: "maya.chen@example.com", cohort: "Admin", role: "admin", offboarded: false }
   ],
   assignments: [
-    { id: "as-alex-safety", contributorId: "c-alex", quizId: "q-safety", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-17" },
-    { id: "as-alex-multi", contributorId: "c-alex", quizId: "q-multimodal", retakesAllowed: 1, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-18" },
-    { id: "as-maya-safety", contributorId: "c-maya", quizId: "q-safety", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-12" },
-    { id: "as-jordan-safety", contributorId: "c-jordan", quizId: "q-safety", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-13" },
-    { id: "as-nia-safety", contributorId: "c-nia", quizId: "q-safety", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-16" },
-    { id: "as-sam-safety", contributorId: "c-sam", quizId: "q-safety", retakesAllowed: 1, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-11" },
-    { id: "as-elle-safety", contributorId: "c-elle", quizId: "q-safety", retakesAllowed: 0, retakesUsed: 0, locked: true, offboarded: false, assignedAt: "2026-06-10" },
-    { id: "as-devon-safety", contributorId: "c-devon", quizId: "q-safety", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: true, assignedAt: "2026-06-09" }
+    { id: "as-alex-otter", contributorId: "c-alex", quizId: "q-otter", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-17" },
+    { id: "as-alex-safety", contributorId: "c-alex", quizId: "q-safety", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-18" },
+    { id: "as-alex-search", contributorId: "c-alex", quizId: "q-search", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-19" },
+    { id: "as-nia-otter", contributorId: "c-nia", quizId: "q-otter", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-17" },
+    { id: "as-nia-safety", contributorId: "c-nia", quizId: "q-safety", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-18" },
+    { id: "as-nia-search", contributorId: "c-nia", quizId: "q-search", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-19" }
   ],
   attempts: [
     {
-      id: "att-maya-1",
-      contributorId: "c-maya",
-      quizId: "q-safety",
+      id: "att-alex-otter-1",
+      contributorId: "c-alex",
+      quizId: "q-otter",
       status: "Passed",
-      score: 90,
-      activeSeconds: 1020,
+      score: 92,
+      activeSeconds: 810,
       startedAt: "2026-06-18T15:00:00",
-      submittedAt: "2026-06-18T15:17:00",
+      submittedAt: "2026-06-18T15:13:30",
       retakeNumber: 0,
       manualReview: false,
       overridden: false,
       note: "",
       answers: {
-        "qs-1": "a",
-        "qs-2": ["a", "b", "d"],
-        "qs-3": "false",
-        "qs-4": ["a", "b", "c", "d"],
-        "qs-5": "b"
+        "qo-1": "a",
+        "qo-2": "false",
+        "qo-3": ["a", "b", "d"],
+        "qo-4": "b"
       }
     },
     {
-      id: "att-jordan-1",
-      contributorId: "c-jordan",
-      quizId: "q-safety",
-      status: "Failed",
-      score: 60,
-      activeSeconds: 740,
-      startedAt: "2026-06-18T16:10:00",
-      submittedAt: "2026-06-18T16:22:20",
-      retakeNumber: 0,
-      manualReview: false,
-      overridden: false,
-      note: "Missed multiple policy hierarchy items.",
-      answers: {
-        "qs-1": "b",
-        "qs-2": ["a", "c"],
-        "qs-3": "false",
-        "qs-4": ["a", "c", "b", "d"],
-        "qs-5": "a"
-      }
-    },
-    {
-      id: "att-nia-1",
-      contributorId: "c-nia",
+      id: "att-alex-safety-1",
+      contributorId: "c-alex",
       quizId: "q-safety",
       status: "In progress",
       score: null,
-      activeSeconds: 398,
+      activeSeconds: 410,
       startedAt: "2026-06-20T12:20:00",
       submittedAt: null,
       retakeNumber: 0,
       manualReview: false,
       overridden: false,
       note: "",
-      questionIds: ["qs-3", "qs-1", "qs-2", "qs-5", "qs-4"],
+      questionIds: ["qs-2", "qs-1", "qs-3", "qs-4"],
       answerOrderByQuestion: {
         "qs-1": ["c", "a", "b", "d"],
-        "qs-2": ["a", "c", "d", "b"],
-        "qs-3": ["false", "true"],
-        "qs-4": ["a", "b", "c", "d"],
-        "qs-5": ["d", "b", "a", "c"]
+        "qs-2": ["true", "false"],
+        "qs-3": ["a", "c", "d", "b"],
+        "qs-4": ["a", "b", "c", "d"]
       },
-      stepKeys: ["question:qs-3", "question:qs-1", "question:qs-2", "question:qs-5", "question:qs-4"],
+      stepKeys: ["question:qs-2", "question:qs-1", "question:qs-3", "question:qs-4"],
       answers: {
-        "qs-3": "false",
+        "qs-2": "true",
         "qs-1": "a"
       }
     },
     {
-      id: "att-sam-1",
-      contributorId: "c-sam",
-      quizId: "q-safety",
+      id: "att-nia-otter-1",
+      contributorId: "c-nia",
+      quizId: "q-otter",
       status: "Failed",
-      score: 70,
-      activeSeconds: 930,
-      startedAt: "2026-06-17T18:00:00",
-      submittedAt: "2026-06-17T18:15:30",
+      score: 68,
+      activeSeconds: 720,
+      startedAt: "2026-06-18T16:10:00",
+      submittedAt: "2026-06-18T16:22:00",
+      retakeNumber: 0,
+      manualReview: false,
+      overridden: false,
+      note: "Missed several guideline hierarchy questions.",
+      answers: {
+        "qo-1": "b",
+        "qo-2": "true",
+        "qo-3": ["a", "c"],
+        "qo-4": "a"
+      }
+    },
+    {
+      id: "att-nia-safety-1",
+      contributorId: "c-nia",
+      quizId: "q-safety",
+      status: "Passed",
+      score: 88,
+      activeSeconds: 990,
+      startedAt: "2026-06-19T10:00:00",
+      submittedAt: "2026-06-19T10:16:30",
       retakeNumber: 0,
       manualReview: false,
       overridden: false,
       note: "",
       answers: {
         "qs-1": "a",
-        "qs-2": ["a", "b"],
-        "qs-3": "true",
-        "qs-4": ["a", "b", "c", "d"],
-        "qs-5": "a"
-      }
-    },
-    {
-      id: "att-devon-1",
-      contributorId: "c-devon",
-      quizId: "q-safety",
-      status: "Passed",
-      score: 86,
-      activeSeconds: 1160,
-      startedAt: "2026-06-13T10:20:00",
-      submittedAt: "2026-06-13T10:39:20",
-      retakeNumber: 0,
-      manualReview: false,
-      overridden: false,
-      note: "Offboarded from project; history remains readable.",
-      answers: {
-        "qs-1": "a",
-        "qs-2": ["a", "b", "d"],
-        "qs-3": "false",
-        "qs-4": ["a", "c", "b", "d"],
-        "qs-5": "b"
+        "qs-2": "true",
+        "qs-3": "a",
+        "qs-4": ["a", "b", "c", "d"]
       }
     }
   ],
   audit: [
-    { id: "au-1", actor: "Admin", action: "Project inactive enabled", target: "Multimodal Rubric Calibration", at: "2026-06-21 09:12" },
-    { id: "au-2", actor: "Admin", action: "Quiz locked", target: "Elle Morgan", at: "2026-06-20 14:44" },
-    { id: "au-3", actor: "Admin", action: "Contributor offboarded", target: "Devon Brooks", at: "2026-06-19 16:02" }
+    { id: "au-1", actor: "Admin", action: "Assessment content published", target: "Project Otter Quiz", at: "2026-06-21 09:12" },
+    { id: "au-2", actor: "Admin", action: "Retake enabled", target: "Nia Patel - Project Otter Quiz", at: "2026-06-20 14:44" },
+    { id: "au-3", actor: "Admin", action: "Result changed", target: "Safety Review Scenarios", at: "2026-06-19 16:02" }
   ]
 });
 
@@ -379,7 +394,7 @@ function normalizeState(candidate) {
 }
 
 function normalizeContributor(person) {
-  const defaultAdmins = new Set(["maya.chen@example.com", "jordan.reed@example.com"]);
+  const defaultAdmins = new Set(["maya.chen@example.com"]);
   return {
     ...person,
     role: person.role || (defaultAdmins.has(String(person.email || "").toLowerCase()) ? "admin" : "contributor")
@@ -647,10 +662,9 @@ function renderShell(content) {
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <span class="brand-mark" aria-hidden="true"></span>
           <div>
-            <div class="brand-title">Qualify Lab</div>
-            <div class="brand-subtitle">AI project assessments</div>
+            <div class="brand-title">Project Otter</div>
+            <div class="brand-subtitle">Assessment dashboard</div>
           </div>
         </div>
         <nav class="nav" aria-label="Main">
@@ -663,7 +677,7 @@ function renderShell(content) {
         </nav>
         <div class="sandbox-box">
           <strong>Sandbox</strong><br>
-          ${isAdmin(current) ? "Admin account: use Make admin to promote accounts by email." : "Contributor account: only the Contributor tab is visible. Switch to Maya or Jordan to test admin tools."}
+          ${isAdmin(current) ? "Admin account: use Make admin to promote accounts by email." : "Contributor account: only the Contributor tab is visible. Switch to Maya to test admin tools."}
         </div>
       </aside>
       <main class="main">
@@ -781,7 +795,6 @@ function renderContributorQuizCard(item) {
         <h3 class="quiz-card-title">${escapeHtml(itemQuiz.title)}</h3>
         <div class="quiz-card-meta">
           <span class="status ${statusClass(status)}">${escapeHtml(status)}</span>
-          <span class="status not-started">${escapeHtml(itemQuiz.project)}</span>
         </div>
       </div>
       <div class="quiz-card-body">
@@ -817,7 +830,6 @@ function renderContributorHistory(history) {
               <tr>
                 <td>
                   <div class="cell-title">${escapeHtml(itemQuiz.title)}</div>
-                  <div class="cell-sub">${escapeHtml(itemQuiz.project)}</div>
                 </td>
                 <td><span class="status ${statusClass(latest.status)}">${escapeHtml(latest.status)}</span></td>
                 <td>${latest.score === null ? "Pending" : `${latest.score}%`}</td>
@@ -1024,7 +1036,6 @@ function renderAdminTable(rows) {
               </td>
               <td>
                 <div class="cell-title">${escapeHtml(row.itemQuiz.title)}</div>
-                <div class="cell-sub">${escapeHtml(row.itemQuiz.project)}</div>
               </td>
               <td><span class="status ${statusClass(row.status)}">${escapeHtml(row.status)}</span></td>
               <td>${row.latest && row.latest.score !== null ? `${row.latest.score}%` : "Pending"}</td>
@@ -1518,7 +1529,7 @@ function renderAnalytics() {
           <div class="panel-header">
             <div>
               <h2 class="section-title small">${escapeHtml(itemQuiz.title)}</h2>
-              <div class="section-kicker">${escapeHtml(itemQuiz.project)}</div>
+              <div class="section-kicker">Scores, timing, and question performance</div>
             </div>
           </div>
           <div class="panel-body">
@@ -2084,7 +2095,7 @@ function exportCsv() {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = "qualify-lab-results.csv";
+  anchor.download = "project-otter-results.csv";
   anchor.click();
   URL.revokeObjectURL(url);
 }
