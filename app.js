@@ -1,4 +1,4 @@
-const STORAGE_KEY = "projectOtterAssessmentState.v2";
+const STORAGE_KEY = "projectOtterAssessmentState.v3";
 const PROJECT_NAME = "Project Otter";
 
 const app = document.querySelector("#app");
@@ -287,6 +287,25 @@ const initialState = () => ({
       }
     },
     {
+      id: "att-alex-search-1",
+      contributorId: "c-alex",
+      quizId: "q-search",
+      status: "Submitted",
+      score: null,
+      activeSeconds: 860,
+      startedAt: "2026-06-21T09:30:00",
+      submittedAt: "2026-06-21T09:44:20",
+      retakeNumber: 0,
+      manualReview: true,
+      overridden: false,
+      note: "Awaiting admin score for written response.",
+      answers: {
+        "qsearch-1": "a",
+        "qsearch-2": "true",
+        "qsearch-3": "I would first decide whether the query asks for current facts or durable background. If freshness is required, I would favor the newer result unless it is unreliable. If authority matters more, I would choose the more authoritative source and note any freshness limitation."
+      }
+    },
+    {
       id: "att-nia-otter-1",
       contributorId: "c-nia",
       quizId: "q-otter",
@@ -344,6 +363,8 @@ let view = "contributor";
 let selectedQuizId = state.selectedQuizId || state.quizzes[0].id;
 let editorMode = "home";
 let selectedAttemptId = null;
+let selectedHistoryAttemptId = null;
+let adminSubView = "responses";
 let makeAdminOpen = false;
 let selectedAssignments = new Set();
 let draggedContentKey = null;
@@ -358,6 +379,7 @@ let filters = {
   status: "All",
   score: "All",
   cohort: "All",
+  responseSort: "Most recent",
   offboardingSearch: ""
 };
 
@@ -382,6 +404,8 @@ function resetState() {
   selectedQuizId = state.selectedQuizId;
   editorMode = "home";
   selectedAttemptId = null;
+  selectedHistoryAttemptId = null;
+  adminSubView = "responses";
   makeAdminOpen = false;
   selectedAssignments = new Set();
   session = null;
@@ -622,6 +646,21 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+function attemptTimeValue(attempt) {
+  if (!attempt) return 0;
+  return new Date(attempt.submittedAt || attempt.startedAt || 0).getTime() || 0;
+}
+
+function responseSortValue(row) {
+  return row.latest ? attemptTimeValue(row.latest) : (new Date(row.item.assignedAt || 0).getTime() || 0);
+}
+
+function responseDateLabel(row) {
+  if (row.latest?.submittedAt) return `Submitted ${formatDate(row.latest.submittedAt)}`;
+  if (row.latest?.startedAt) return `Started ${formatDate(row.latest.startedAt)}`;
+  return row.item.assignedAt ? `Assigned ${formatDate(row.item.assignedAt)}` : "-";
+}
+
 function timestampLabel() {
   return new Date().toLocaleString(undefined, {
       year: "numeric",
@@ -808,6 +847,7 @@ function renderContributor() {
           ${history.length ? renderContributorHistory(history) : `<div class="empty-state">Completed quizzes will appear here.</div>`}
         </div>
       </div>
+      ${renderContributorHistoryDetail()}
     </section>
   `;
 }
@@ -872,12 +912,64 @@ function renderContributorHistory(history) {
                 <td>${latest.score === null ? "Pending" : `${latest.score}%`}</td>
                 <td>${formatSeconds(latest.activeSeconds)}</td>
                 <td>${formatDate(latest.submittedAt)}</td>
-                <td>${latest.status === "Passed" ? `<span class="check-badge"><span class="check-icon" aria-hidden="true"></span> Passed</span>` : "History only"}</td>
+                <td>
+                  <div class="row-actions">
+                    ${latest.status === "Passed" ? `<span class="check-badge"><span class="check-icon" aria-hidden="true"></span> Passed</span>` : ""}
+                    <button class="button small secondary" data-action="view-history-attempt" data-attempt-id="${latest.id}">${latest.status === "Passed" ? "View" : "History"}</button>
+                  </div>
+                </td>
               </tr>
             `;
           }).join("")}
         </tbody>
       </table>
+    </div>
+  `;
+}
+
+function renderContributorHistoryDetail() {
+  if (!selectedHistoryAttemptId) return "";
+  const attempt = byId(state.attempts, selectedHistoryAttemptId);
+  if (!attempt || attempt.contributorId !== state.currentContributorId) return "";
+  const itemQuiz = quiz(attempt.quizId);
+  if (!itemQuiz) return "";
+  return `
+    <div class="modal-backdrop" data-modal-backdrop="history-attempt">
+      <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="history-detail-title">
+        <div class="modal-header">
+          <div>
+            <h2 id="history-detail-title" class="section-title small">Attempt history</h2>
+            <div class="section-kicker">${escapeHtml(itemQuiz.title)}</div>
+          </div>
+          <button class="button ghost" data-action="close-history-attempt">Close</button>
+        </div>
+        <div class="modal-body">
+          <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="stat">
+              <div class="stat-label">Status</div>
+              <div class="stat-value" style="font-size: 22px;">${escapeHtml(attempt.status)}</div>
+              <div class="stat-note">Missed-answer review is not available.</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Score</div>
+              <div class="stat-value">${attempt.score === null ? "Pending" : `${attempt.score}%`}</div>
+              <div class="stat-note">Threshold ${itemQuiz.passThreshold}%</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Active time</div>
+              <div class="stat-value" style="font-size: 22px;">${formatSeconds(attempt.activeSeconds)}</div>
+              <div class="stat-note">Pauses excluded</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Submitted</div>
+              <div class="stat-value" style="font-size: 22px;">${formatDate(attempt.submittedAt)}</div>
+              <div class="stat-note">History remains readable.</div>
+            </div>
+          </div>
+          <div style="height: 16px;"></div>
+          <div class="empty-state">Scores and status are visible here. Correct answers and missed-question review are only available to admins.</div>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -909,6 +1001,8 @@ function renderAdmin() {
           <div class="stat-note">Assigned, no attempt yet</div>
         </div>
       </div>
+      ${renderAdminSubTabs()}
+      ${adminSubView === "written" ? renderWrittenScoringPanel() : `
       <div class="panel">
         <div class="panel-header">
           <div>
@@ -944,9 +1038,20 @@ function renderAdmin() {
           </div>
         </div>
       </div>
+      `}
       ${renderAttemptDetail()}
       ${makeAdminOpen ? renderMakeAdminModal() : ""}
     </section>
+  `;
+}
+
+function renderAdminSubTabs() {
+  const writtenCount = writtenReviewRows().length;
+  return `
+    <div class="subtabs" aria-label="Admin sections">
+      <button class="subtab ${adminSubView === "responses" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="responses">Quiz responses</button>
+      <button class="subtab ${adminSubView === "written" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="written">Written scoring${writtenCount ? ` (${writtenCount})` : ""}</button>
+    </div>
   `;
 }
 
@@ -1040,6 +1145,79 @@ function renderOffboardingPanel() {
   `;
 }
 
+function writtenReviewRows() {
+  return state.attempts
+    .filter((attempt) => attempt.status === "Submitted" || attempt.manualReview)
+    .map((attempt) => ({
+      attempt,
+      person: contributor(attempt.contributorId),
+      itemQuiz: quiz(attempt.quizId)
+    }))
+    .filter((row) => row.person && row.itemQuiz)
+    .sort((a, b) => attemptTimeValue(b.attempt) - attemptTimeValue(a.attempt));
+}
+
+function renderWrittenScoringPanel() {
+  const rows = writtenReviewRows();
+  return `
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h1 class="section-title">Written scoring</h1>
+          <div class="section-kicker">Long text responses land here until an admin assigns a score.</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        ${rows.length ? `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Contributor</th>
+                  <th>Quiz</th>
+                  <th>Written response</th>
+                  <th>Submitted</th>
+                  <th>Score</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(({ attempt, person, itemQuiz }) => {
+                  const writtenQuestions = itemQuiz.questions.filter((question) => question.type === "Long text");
+                  const preview = writtenQuestions.map((question) => attempt.answers?.[question.id]).filter(Boolean).join(" ");
+                  return `
+                    <tr>
+                      <td>
+                        <div class="cell-title">${escapeHtml(person.name)}</div>
+                        <div class="cell-sub">${escapeHtml(person.email)}</div>
+                      </td>
+                      <td>
+                        <div class="cell-title">${escapeHtml(itemQuiz.title)}</div>
+                        <div class="cell-sub">Threshold ${itemQuiz.passThreshold}%</div>
+                      </td>
+                      <td><div class="written-preview">${escapeHtml(preview || "No written response captured.")}</div></td>
+                      <td>${formatDate(attempt.submittedAt)}</td>
+                      <td>
+                        <input class="input score-input" type="number" min="0" max="100" value="${attempt.score ?? itemQuiz.passThreshold}" data-written-score="${attempt.id}" aria-label="Score for ${escapeHtml(person.name)}">
+                      </td>
+                      <td>
+                        <div class="row-actions">
+                          <button class="button small secondary" data-action="view-attempt" data-attempt-id="${attempt.id}">Review</button>
+                          <button class="button small" data-action="score-written-attempt" data-attempt-id="${attempt.id}">Save score</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : `<div class="empty-state">No written responses need scoring right now.</div>`}
+      </div>
+    </div>
+  `;
+}
+
 function renderMakeAdminModal() {
   return `
     <div class="modal-backdrop" data-modal-backdrop="make-admin">
@@ -1111,6 +1289,12 @@ function renderFilters() {
           ${cohorts.map((cohort) => `<option ${filters.cohort === cohort ? "selected" : ""}>${escapeHtml(cohort)}</option>`).join("")}
         </select>
       </div>
+      <div class="field">
+        <label for="filter-sort">Sort responses</label>
+        <select id="filter-sort" class="select" data-filter="responseSort">
+          ${["Most recent", "Oldest"].map((sort) => `<option ${filters.responseSort === sort ? "selected" : ""}>${sort}</option>`).join("")}
+        </select>
+      </div>
     </div>
   `;
 }
@@ -1136,6 +1320,10 @@ function filteredAdminRows() {
         if (filters.score === "Below 80" && row.latest.score >= 80) return false;
       }
       return true;
+    })
+    .sort((a, b) => {
+      const direction = filters.responseSort === "Oldest" ? 1 : -1;
+      return (responseSortValue(a) - responseSortValue(b)) * direction;
     });
 }
 
@@ -1150,6 +1338,7 @@ function renderAdminTable(rows) {
             <th>Status</th>
             <th>Score</th>
             <th>Time</th>
+            <th>Attempt date</th>
             <th>Retakes</th>
             <th>Actions</th>
           </tr>
@@ -1168,6 +1357,7 @@ function renderAdminTable(rows) {
               <td><span class="status ${statusClass(row.status)}">${escapeHtml(row.status)}</span></td>
               <td>${row.latest && row.latest.score !== null ? `${row.latest.score}%` : "Pending"}</td>
               <td>${row.latest ? formatSeconds(row.latest.activeSeconds) : "-"}</td>
+              <td>${escapeHtml(responseDateLabel(row))}</td>
               <td>${remainingRetakes(row.item)}</td>
               <td>
                 <div class="row-actions">
@@ -2615,6 +2805,11 @@ function handleClick(event) {
     render();
     return;
   }
+  if (event.target.dataset.modalBackdrop === "history-attempt") {
+    selectedHistoryAttemptId = null;
+    render();
+    return;
+  }
   if (event.target.dataset.modalBackdrop === "make-admin") {
     makeAdminOpen = false;
     render();
@@ -2627,6 +2822,7 @@ function handleClick(event) {
     if (!isAdmin() && button.dataset.view !== "contributor") return;
     if (button.dataset.view !== view) {
       selectedAttemptId = null;
+      selectedHistoryAttemptId = null;
       makeAdminOpen = false;
     }
     view = button.dataset.view;
@@ -2694,6 +2890,19 @@ function handleClick(event) {
     selectedAttemptId = null;
     render();
   }
+  if (action === "view-history-attempt") {
+    selectedHistoryAttemptId = button.dataset.attemptId;
+    render();
+  }
+  if (action === "close-history-attempt") {
+    selectedHistoryAttemptId = null;
+    render();
+  }
+  if (action === "admin-subtab") {
+    adminSubView = button.dataset.adminSubtab || "responses";
+    selectedAttemptId = null;
+    render();
+  }
   if (action === "open-make-admin") {
     makeAdminOpen = true;
     render();
@@ -2716,6 +2925,9 @@ function handleClick(event) {
   }
   if (action === "change-result") {
     changeResult(button.dataset.assignmentId);
+  }
+  if (action === "score-written-attempt") {
+    scoreWrittenAttempt(button.dataset.attemptId);
   }
   if (action === "select-all") {
     selectedAssignments = new Set(filteredAdminRows().map((row) => row.item.id));
@@ -2934,6 +3146,7 @@ function handleChange(event) {
   if (target.dataset.action === "switch-contributor") {
     state.currentContributorId = target.value;
     selectedAttemptId = null;
+    selectedHistoryAttemptId = null;
     makeAdminOpen = false;
     render();
   }
@@ -3067,6 +3280,25 @@ function toggleLock(assignmentId) {
   render();
 }
 
+function scoreWrittenAttempt(attemptId) {
+  const attempt = byId(state.attempts, attemptId);
+  if (!attempt) return;
+  const itemQuiz = quiz(attempt.quizId);
+  const person = contributor(attempt.contributorId);
+  const input = document.querySelector(`[data-written-score="${attemptId}"]`);
+  const score = Number(input?.value);
+  if (!Number.isFinite(score) || score < 0 || score > 100) {
+    alert("Enter a score from 0 to 100.");
+    return;
+  }
+  attempt.score = Math.round(score);
+  attempt.status = attempt.score >= itemQuiz.passThreshold ? "Passed" : "Failed";
+  attempt.manualReview = false;
+  attempt.overridden = true;
+  addAudit("Written response scored", `${person.email} - ${itemQuiz.title} - ${attempt.score}%`);
+  render();
+}
+
 function toggleContributorOffboard(contributorId) {
   const person = contributor(contributorId);
   if (!person || isAdmin(person)) return;
@@ -3094,6 +3326,7 @@ function changeResult(assignmentId) {
     attempt.status = "Passed";
     attempt.score = Math.max(itemQuiz.passThreshold, attempt.score || itemQuiz.passThreshold);
   }
+  attempt.manualReview = false;
   attempt.overridden = true;
   addAudit("Result changed", `${contributor(item.contributorId).email} - ${itemQuiz.title}`);
   render();

@@ -477,7 +477,7 @@ a {
 
 .filters {
   display: grid;
-  grid-template-columns: 1.4fr repeat(4, minmax(130px, 1fr));
+  grid-template-columns: 1.4fr repeat(5, minmax(130px, 1fr));
   gap: 10px;
   align-items: end;
 }
@@ -560,6 +560,55 @@ tr:last-child td {
   display: flex;
   gap: 7px;
   flex-wrap: wrap;
+}
+
+.subtabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+}
+
+.subtab {
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.subtab:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.subtab.is-active {
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+}
+
+.written-preview {
+  max-width: 380px;
+  color: var(--muted);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.score-input {
+  width: 92px;
 }
 
 .offboarding-grid {
