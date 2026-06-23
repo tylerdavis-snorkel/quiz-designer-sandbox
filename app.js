@@ -1364,6 +1364,7 @@ function renderEditorHome() {
                 <div class="quiz-card-actions">
                   <button class="button" data-action="edit-quiz" data-quiz-id="${itemQuiz.id}">Edit quiz</button>
                   <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview</button>
+                  <button class="button danger" data-action="delete-quiz" data-quiz-id="${itemQuiz.id}">Delete</button>
                 </div>
               </article>
             `).join("")}
@@ -2281,6 +2282,28 @@ function createNewQuiz() {
   render();
 }
 
+function deleteQuiz(quizId) {
+  const itemQuiz = quiz(quizId);
+  if (!itemQuiz) return;
+  if (state.quizzes.length <= 1) {
+    alert("Keep at least one quiz in the sandbox.");
+    return;
+  }
+  const assignmentCount = state.assignments.filter((item) => item.quizId === quizId).length;
+  const attemptCount = state.attempts.filter((attempt) => attempt.quizId === quizId).length;
+  const warning = `Delete "${itemQuiz.title}"? This removes ${assignmentCount} assignment${assignmentCount === 1 ? "" : "s"} and ${attemptCount} attempt${attemptCount === 1 ? "" : "s"} from the sandbox.`;
+  if (!confirm(warning)) return;
+  state.quizzes = state.quizzes.filter((candidate) => candidate.id !== quizId);
+  state.assignments = state.assignments.filter((item) => item.quizId !== quizId);
+  state.attempts = state.attempts.filter((attempt) => attempt.quizId !== quizId);
+  if (selectedQuizId === quizId) selectedQuizId = state.quizzes[0]?.id || "";
+  if (imageViewer?.quizId === quizId) imageViewer = null;
+  if (session?.quizId === quizId) session = null;
+  addAudit("Quiz deleted", itemQuiz.title);
+  editorMode = "home";
+  render();
+}
+
 function getQuestion(itemQuiz, questionId) {
   return itemQuiz.questions.find((question) => question.id === questionId);
 }
@@ -2729,6 +2752,9 @@ function handleClick(event) {
   }
   if (action === "create-quiz") {
     createNewQuiz();
+  }
+  if (action === "delete-quiz") {
+    deleteQuiz(button.dataset.quizId);
   }
   if (action === "move-content") {
     moveContentByDirection(button.dataset.quizId, button.dataset.contentKey, button.dataset.direction);

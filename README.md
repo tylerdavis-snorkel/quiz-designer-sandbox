@@ -39,6 +39,7 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - Audit logs are shown for admin changes.
 - Quizzes require a Google Docs guidelines link.
 - The quiz editor starts with "create a new quiz or choose an existing quiz."
+- Admins can delete a quiz from the quiz editor home, which removes its sandbox assignments and attempts.
 - Publish is disabled until an assessment has unpublished changes.
 - Course pages and questions can be reordered with drag and drop.
 - Course pages and questions can also be reordered with Move up / Move down buttons.
