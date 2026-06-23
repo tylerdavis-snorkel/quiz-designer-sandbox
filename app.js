@@ -181,13 +181,13 @@ const initialState = () => ({
     }
   ],
   contributors: [
-    { id: "c-alex", name: "Alex Rivera", email: "alex.rivera@example.com", cohort: "June onboarding", offboarded: false },
-    { id: "c-maya", name: "Maya Chen", email: "maya.chen@example.com", cohort: "June onboarding", offboarded: false },
-    { id: "c-jordan", name: "Jordan Reed", email: "jordan.reed@example.com", cohort: "May refresh", offboarded: false },
-    { id: "c-nia", name: "Nia Patel", email: "nia.patel@example.com", cohort: "June onboarding", offboarded: false },
-    { id: "c-sam", name: "Sam Ortiz", email: "sam.ortiz@example.com", cohort: "May refresh", offboarded: false },
-    { id: "c-elle", name: "Elle Morgan", email: "elle.morgan@example.com", cohort: "Escalations", offboarded: false },
-    { id: "c-devon", name: "Devon Brooks", email: "devon.brooks@example.com", cohort: "June onboarding", offboarded: true }
+    { id: "c-alex", name: "Alex Rivera", email: "alex.rivera@example.com", cohort: "June onboarding", role: "contributor", offboarded: false },
+    { id: "c-maya", name: "Maya Chen", email: "maya.chen@example.com", cohort: "June onboarding", role: "admin", offboarded: false },
+    { id: "c-jordan", name: "Jordan Reed", email: "jordan.reed@example.com", cohort: "May refresh", role: "admin", offboarded: false },
+    { id: "c-nia", name: "Nia Patel", email: "nia.patel@example.com", cohort: "June onboarding", role: "contributor", offboarded: false },
+    { id: "c-sam", name: "Sam Ortiz", email: "sam.ortiz@example.com", cohort: "May refresh", role: "contributor", offboarded: false },
+    { id: "c-elle", name: "Elle Morgan", email: "elle.morgan@example.com", cohort: "Escalations", role: "contributor", offboarded: false },
+    { id: "c-devon", name: "Devon Brooks", email: "devon.brooks@example.com", cohort: "June onboarding", role: "contributor", offboarded: true }
   ],
   assignments: [
     { id: "as-alex-safety", contributorId: "c-alex", quizId: "q-safety", retakesAllowed: 0, retakesUsed: 0, locked: false, offboarded: false, assignedAt: "2026-06-17" },
@@ -372,7 +372,16 @@ function normalizeState(candidate) {
   const next = candidate || initialState();
   next.projectName = PROJECT_NAME;
   next.quizzes = (next.quizzes || []).map(normalizeQuiz);
+  next.contributors = (next.contributors || []).map(normalizeContributor);
   return next;
+}
+
+function normalizeContributor(person) {
+  const defaultAdmins = new Set(["maya.chen@example.com", "jordan.reed@example.com"]);
+  return {
+    ...person,
+    role: person.role || (defaultAdmins.has(String(person.email || "").toLowerCase()) ? "admin" : "contributor")
+  };
 }
 
 function normalizeQuiz(itemQuiz) {
@@ -499,6 +508,14 @@ function contributor(id) {
   return byId(state.contributors, id);
 }
 
+function currentUser() {
+  return contributor(state.currentContributorId);
+}
+
+function isAdmin(person = currentUser()) {
+  return person?.role === "admin";
+}
+
 function quiz(id) {
   return byId(state.quizzes, id);
 }
@@ -542,8 +559,7 @@ function adminStatus(item) {
   const latest = latestAttempt(item.contributorId, item.quizId);
   if (!latest) return "Not started";
   if (latest.status === "In progress") return "In progress";
-  if (latest.status === "Passed") return "Qualified";
-  if (latest.status === "Failed" && remainingRetakes(item) === 0) return "Blocked";
+  if (latest.status === "Passed") return "Passed";
   if (latest.status === "Failed") return "Failed";
   if (latest.status === "Submitted") return "In progress";
   return latest.status;
@@ -589,6 +605,9 @@ function addAudit(action, target) {
 function render() {
   stopTimer();
   document.body.dataset.theme = state.theme;
+  if (!isAdmin() && ["admin", "editor", "analytics"].includes(view)) {
+    view = "contributor";
+  }
   if (view === "take") {
     renderQuizRunner();
     startTimer();
@@ -610,7 +629,7 @@ function render() {
 }
 
 function renderShell(content) {
-  const current = contributor(state.currentContributorId);
+  const current = currentUser();
   const title = {
     contributor: "Contributor dashboard",
     admin: "Admin dashboard",
@@ -629,26 +648,28 @@ function renderShell(content) {
         </div>
         <nav class="nav" aria-label="Main">
           ${navButton("contributor", "Contributor")}
-          ${navButton("admin", "Admin")}
-          ${navButton("editor", "Quiz editor")}
-          ${navButton("analytics", "Analytics")}
+          ${isAdmin(current) ? `
+            ${navButton("admin", "Admin")}
+            ${navButton("editor", "Quiz editor")}
+            ${navButton("analytics", "Analytics")}
+          ` : ""}
         </nav>
         <div class="sandbox-box">
           <strong>Sandbox</strong><br>
-          Sample contributors, quizzes, attempts, resets, locks, and audit logs.
+          ${isAdmin(current) ? "Admin account: use Admin access to promote other accounts." : "Contributor account: only the Contributor tab is visible. Switch to Maya or Jordan to test admin tools."}
         </div>
       </aside>
       <main class="main">
         <header class="topbar">
           <div>
             <div class="topbar-title">${escapeHtml(title)}</div>
-            <div class="topbar-meta">${escapeHtml(current.name)} - ${escapeHtml(current.email)}</div>
+            <div class="topbar-meta">${escapeHtml(current.name)} - ${escapeHtml(current.email)} - ${isAdmin(current) ? "Admin" : "Contributor"}</div>
           </div>
           <div class="topbar-actions">
             <select class="select" data-action="switch-contributor" aria-label="Current contributor">
               ${state.contributors.map((person) => `
                 <option value="${person.id}" ${person.id === state.currentContributorId ? "selected" : ""}>
-                  ${escapeHtml(person.name)}
+                  ${escapeHtml(person.name)} (${person.role === "admin" ? "Admin" : "Contributor"})
                 </option>
               `).join("")}
             </select>
@@ -708,7 +729,7 @@ function renderContributor() {
           <div class="panel-body">
             <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
               <div class="stat">
-                <div class="stat-label">Qualified</div>
+                <div class="stat-label">Passed</div>
                 <div class="stat-value">${passedCount}</div>
                 <div class="stat-note">Green check on passed quizzes</div>
               </div>
@@ -779,24 +800,23 @@ function renderContributorHistory(history) {
             <th>Score</th>
             <th>Active time</th>
             <th>Submitted</th>
-            <th>Qualification</th>
+            <th>Result</th>
           </tr>
         </thead>
         <tbody>
           ${history.map(({ item, latest }) => {
             const itemQuiz = quiz(item.quizId);
-            const blocked = latest.status === "Failed" && remainingRetakes(item) === 0;
             return `
               <tr>
                 <td>
                   <div class="cell-title">${escapeHtml(itemQuiz.title)}</div>
                   <div class="cell-sub">${escapeHtml(itemQuiz.project)}</div>
                 </td>
-                <td><span class="status ${statusClass(blocked ? "Blocked" : latest.status)}">${escapeHtml(blocked ? "Blocked" : latest.status)}</span></td>
+                <td><span class="status ${statusClass(latest.status)}">${escapeHtml(latest.status)}</span></td>
                 <td>${latest.score === null ? "Pending" : `${latest.score}%`}</td>
                 <td>${formatSeconds(latest.activeSeconds)}</td>
                 <td>${formatDate(latest.submittedAt)}</td>
-                <td>${latest.status === "Passed" ? `<span class="check-badge"><span class="check-icon" aria-hidden="true"></span> Qualified</span>` : "History only"}</td>
+                <td>${latest.status === "Passed" ? `<span class="check-badge"><span class="check-icon" aria-hidden="true"></span> Passed</span>` : "History only"}</td>
               </tr>
             `;
           }).join("")}
@@ -813,14 +833,14 @@ function renderAdmin() {
     <section class="content">
       <div class="stat-grid">
         <div class="stat">
-          <div class="stat-label">Qualified</div>
-          <div class="stat-value">${stats.qualified}</div>
+          <div class="stat-label">Passed</div>
+          <div class="stat-value">${stats.passed}</div>
           <div class="stat-note">Passed latest attempt</div>
         </div>
         <div class="stat">
-          <div class="stat-label">Blocked</div>
-          <div class="stat-value">${stats.blocked}</div>
-          <div class="stat-note">Failed with no retakes left</div>
+          <div class="stat-label">Failed</div>
+          <div class="stat-value">${stats.failed}</div>
+          <div class="stat-note">Failed latest attempt</div>
         </div>
         <div class="stat">
           <div class="stat-label">In progress</div>
@@ -828,9 +848,9 @@ function renderAdmin() {
           <div class="stat-note">Pause/resume enabled</div>
         </div>
         <div class="stat">
-          <div class="stat-label">Pass rate</div>
-          <div class="stat-value">${stats.passRate}%</div>
-          <div class="stat-note">Submitted attempts</div>
+          <div class="stat-label">Not started</div>
+          <div class="stat-value">${stats.notStarted}</div>
+          <div class="stat-note">Assigned, no attempt yet</div>
         </div>
       </div>
       <div class="panel">
@@ -853,6 +873,7 @@ function renderAdmin() {
         </div>
       </div>
       ${renderAttemptDetail()}
+      ${renderAdminAccessPanel()}
       <div class="panel">
         <div class="panel-header">
           <div>
@@ -875,21 +896,67 @@ function renderAdmin() {
   `;
 }
 
+function renderAdminAccessPanel() {
+  const current = currentUser();
+  return `
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="section-title small">Admin access</h2>
+          <div class="section-kicker">Admins can promote other accounts to admin or return them to contributor access.</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Current role</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${state.contributors.filter((person) => !person.offboarded).map((person) => {
+                const personIsAdmin = isAdmin(person);
+                const isSelf = person.id === current.id;
+                return `
+                  <tr>
+                    <td><div class="cell-title">${escapeHtml(person.name)}</div><div class="cell-sub">${escapeHtml(person.cohort)}</div></td>
+                    <td>${escapeHtml(person.email)}</td>
+                    <td><span class="status ${personIsAdmin ? "passed" : "not-started"}">${personIsAdmin ? "Admin" : "Contributor"}</span></td>
+                    <td>
+                      ${personIsAdmin ? `
+                        <button class="button small secondary" data-action="set-role" data-contributor-id="${person.id}" data-role="contributor" ${isSelf ? "disabled" : ""}>Remove admin</button>
+                      ` : `
+                        <button class="button small" data-action="set-role" data-contributor-id="${person.id}" data-role="admin">Make admin</button>
+                      `}
+                    </td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function adminStats() {
   const allRows = state.assignments.map((item) => ({ item, status: adminStatus(item), latest: latestAttempt(item.contributorId, item.quizId) }));
-  const submitted = state.attempts.filter((attempt) => ["Passed", "Failed"].includes(attempt.status));
-  const passed = submitted.filter((attempt) => attempt.status === "Passed").length;
   return {
-    qualified: allRows.filter((row) => row.status === "Qualified").length,
-    blocked: allRows.filter((row) => row.status === "Blocked").length,
+    passed: allRows.filter((row) => row.status === "Passed").length,
+    failed: allRows.filter((row) => row.status === "Failed").length,
     inProgress: allRows.filter((row) => row.status === "In progress").length,
-    passRate: submitted.length ? Math.round((passed / submitted.length) * 100) : 0
+    notStarted: allRows.filter((row) => row.status === "Not started").length
   };
 }
 
 function renderFilters() {
   const cohorts = ["All", ...new Set(state.contributors.map((person) => person.cohort))];
-  const statuses = ["All", "Qualified", "Blocked", "Not started", "In progress", "Passed", "Failed"];
+  const statuses = ["All", "Passed", "Failed", "In progress", "Not started"];
   return `
     <div class="filters">
       <div class="field">
@@ -1967,7 +2034,7 @@ function renderResult() {
           <div class="result-score">
             <div class="score-ring">${scoreLabel}</div>
             <div>
-              ${result.status === "Passed" ? `<div class="check-badge"><span class="check-icon" aria-hidden="true"></span> Qualified</div>` : ""}
+              ${result.status === "Passed" ? `<div class="check-badge"><span class="check-icon" aria-hidden="true"></span> Passed</div>` : ""}
               <div class="section-kicker">Active time: ${formatSeconds(result.activeSeconds)}</div>
               <p class="muted">${result.manualReview ? "Open text requires admin scoring before a final score appears." : "Your score and result are shown. Missed question review is not available."}</p>
               <button class="button" data-action="${result.preview ? "back-to-editor" : "return-dashboard"}">${result.preview ? "Back to editor" : "Return to dashboard"}</button>
@@ -2192,6 +2259,16 @@ function removeQuizAssignment(quizId, contributorId) {
   render();
 }
 
+function setContributorRole(contributorId, role) {
+  const person = contributor(contributorId);
+  if (!person || !isAdmin()) return;
+  if (person.id === state.currentContributorId && role !== "admin") return;
+  person.role = role;
+  addAudit(role === "admin" ? "Admin access granted" : "Admin access removed", person.email);
+  if (!isAdmin(currentUser())) view = "contributor";
+  render();
+}
+
 function canAssignQuiz(itemQuiz) {
   return itemQuiz && itemQuiz.status === "Published" && !itemQuiz.draftDirty;
 }
@@ -2373,6 +2450,7 @@ function handleClick(event) {
   if (!button) return;
   const action = button.dataset.action;
   if (action === "nav") {
+    if (!isAdmin() && button.dataset.view !== "contributor") return;
     view = button.dataset.view;
     if (view === "editor") editorMode = "home";
     render();
@@ -2530,6 +2608,9 @@ function handleClick(event) {
   }
   if (action === "remove-assignment") {
     removeQuizAssignment(button.dataset.quizId, button.dataset.contributorId);
+  }
+  if (action === "set-role") {
+    setContributorRole(button.dataset.contributorId, button.dataset.role);
   }
   if (action === "toggle-editor") {
     const itemQuiz = quiz(selectedQuizId);

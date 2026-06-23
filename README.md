@@ -28,7 +28,7 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - Contributors self-sign in through an external platform identity later, likely GitHub or the parent platform.
 - Offboarded contributors keep read-only quiz history.
 - Contributor statuses: Not started, In progress, Submitted, Passed, Failed, Retake available, Locked, Project inactive.
-- Admin-facing "Blocked" means failed with no retakes left.
+- Admin-facing progress statuses are Passed, Failed, In progress, and Not started.
 - Scores decide pass/fail automatically unless an admin overrides.
 - Open long-text questions can land in Submitted until admin scoring is complete.
 - Contributors see exact score and pass/fail, but not missed questions.
@@ -50,6 +50,8 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - Admins can push a published quiz to all contributor dashboards or assign it only to pasted emails.
 - In the sandbox, emails are sample data or pasted allowlist entries. In production, contributor emails should come from verified sign-in identity and/or the project roster.
 - Admin contributor filters focus on qualification/progress statuses instead of operational states like locked/offboarded/project inactive.
+- The sandbox includes admin and contributor accounts. Contributors only see the Contributor tab.
+- Admins can grant or remove admin access for other active accounts from the Admin dashboard.
 - Question and answer order can be randomized per attempt.
 - Reports show canonical answer text, not A/B/C/D.
 - Active quiz time excludes pauses.
