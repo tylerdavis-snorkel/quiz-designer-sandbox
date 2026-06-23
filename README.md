@@ -35,7 +35,7 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - Hints appear during testing and do not reduce score.
 - No email notifications.
 - Admins can export CSV from the dashboard, then open a specific attempt to enable a retake, lock/unlock, change the result, or save an internal note.
-- Offboarding has its own admin section with contributor-level offboard/restore controls and a dedicated offboarding log.
+- Offboarding has its own admin-only tab with searchable contributor-level offboard/restore controls and a dedicated offboarding log.
 - Audit logs are shown for admin changes.
 - Quizzes require a Google Docs guidelines link.
 - The quiz editor starts with "create a new quiz or choose an existing quiz."

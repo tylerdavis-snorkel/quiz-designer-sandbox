@@ -487,6 +487,10 @@ a {
   gap: 6px;
 }
 
+.compact-field {
+  max-width: 420px;
+}
+
 .field label {
   color: var(--muted);
   font-size: 12px;

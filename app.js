@@ -357,7 +357,8 @@ let filters = {
   quiz: "All",
   status: "All",
   score: "All",
-  cohort: "All"
+  cohort: "All",
+  offboardingSearch: ""
 };
 
 function loadState() {
@@ -657,7 +658,7 @@ function addOffboardingLog(action, person) {
 function render() {
   stopTimer();
   document.body.dataset.theme = state.theme;
-  if (!isAdmin() && ["admin", "editor", "analytics"].includes(view)) {
+  if (!isAdmin() && ["admin", "offboarding", "editor", "analytics"].includes(view)) {
     view = "contributor";
   }
   if (view === "take") {
@@ -673,6 +674,7 @@ function render() {
   const content = {
     contributor: renderContributor(),
     admin: renderAdmin(),
+    offboarding: renderOffboarding(),
     editor: renderEditor(),
     analytics: renderAnalytics()
   }[view] || renderContributor();
@@ -685,6 +687,7 @@ function renderShell(content) {
   const title = {
     contributor: "Contributor dashboard",
     admin: "Admin dashboard",
+    offboarding: "Offboarding",
     editor: "Quiz editor",
     analytics: "Quiz analytics"
   }[view];
@@ -701,6 +704,7 @@ function renderShell(content) {
           ${navButton("contributor", "Contributor")}
           ${isAdmin(current) ? `
             ${navButton("admin", "Admin")}
+            ${navButton("offboarding", "Offboarding")}
             ${navButton("editor", "Quiz editor")}
             ${navButton("analytics", "Analytics")}
           ` : ""}
@@ -905,7 +909,6 @@ function renderAdmin() {
           <div class="stat-note">Assigned, no attempt yet</div>
         </div>
       </div>
-      ${renderOffboardingPanel()}
       <div class="panel">
         <div class="panel-header">
           <div>
@@ -947,17 +950,39 @@ function renderAdmin() {
   `;
 }
 
+function renderOffboarding() {
+  return `
+    <section class="content">
+      <div class="toolbar">
+        <div>
+          <h1 class="section-title">Offboarding</h1>
+          <div class="section-kicker">Manage contributor access separately from quiz progress, especially when the contributor list gets long.</div>
+        </div>
+      </div>
+      ${renderOffboardingPanel()}
+    </section>
+  `;
+}
+
 function renderOffboardingPanel() {
-  const contributors = state.contributors.filter((person) => !isAdmin(person));
+  const search = filters.offboardingSearch.trim().toLowerCase();
+  const contributors = state.contributors
+    .filter((person) => !isAdmin(person))
+    .filter((person) => !search || `${person.name} ${person.email} ${person.cohort}`.toLowerCase().includes(search));
   return `
     <div class="panel">
       <div class="panel-header">
         <div>
-          <h2 class="section-title small">Offboarding</h2>
+          <h2 class="section-title small">Contributor access</h2>
           <div class="section-kicker">Offboarding is contributor-level. It disables quiz actions but keeps attempt history visible.</div>
         </div>
       </div>
       <div class="panel-body">
+        <div class="field compact-field">
+          <label for="offboarding-search">Search contributors</label>
+          <input id="offboarding-search" class="input" data-filter="offboardingSearch" value="${escapeHtml(filters.offboardingSearch)}" placeholder="Search name, email, or cohort">
+        </div>
+        <div style="height: 14px;"></div>
         <div class="offboarding-grid">
           <div class="table-wrap">
             <table>
