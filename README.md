@@ -34,7 +34,8 @@ This is safe for a prototype or stakeholder demo. It is not enough for productio
 - Contributors see exact score and pass/fail, but not missed questions.
 - Hints appear during testing and do not reduce score.
 - No email notifications.
-- Admins can export CSV from the dashboard, then open a specific attempt to enable a retake, lock/unlock, offboard/restore, change the result, or save an internal note.
+- Admins can export CSV from the dashboard, then open a specific attempt to enable a retake, lock/unlock, change the result, or save an internal note.
+- Offboarding has its own admin section with contributor-level offboard/restore controls and a dedicated offboarding log.
 - Audit logs are shown for admin changes.
 - Quizzes require a Google Docs guidelines link.
 - The quiz editor starts with "create a new quiz or choose an existing quiz."
@@ -69,7 +70,8 @@ The app stores sample state in browser local storage so you can click around and
 - course_pages: id, quiz_id, title, body, sort_order
 - questions: id, quiz_id, section_id, type, prompt, hint, weight, reference_asset_id, sort_order
 - answers: id, question_id, text, is_correct, sort_order
-- assignments: id, contributor_id, quiz_id, locked, offboarded, retakes_allowed, retakes_used, assigned_at
+- assignments: id, contributor_id, quiz_id, locked, retakes_allowed, retakes_used, assigned_at
+- offboarding_events: id, contributor_id, action, actor_id, created_at
 - attempts: id, assignment_id, status, score, active_seconds, started_at, submitted_at, manual_review_required, overridden_by_admin
 - attempt_answers: id, attempt_id, question_id, answer_payload, is_correct, points_awarded
 - admin_notes: id, attempt_id, admin_id, body, created_at

@@ -1,4 +1,4 @@
-const STORAGE_KEY = "projectOtterAssessmentState.v1";
+const STORAGE_KEY = "projectOtterAssessmentState.v2";
 const PROJECT_NAME = "Project Otter";
 
 const app = document.querySelector("#app");
@@ -228,7 +228,7 @@ const initialState = () => ({
   ],
   contributors: [
     { id: "c-alex", name: "Alex Rivera", email: "alex.rivera@example.com", cohort: "June onboarding", role: "contributor", offboarded: false },
-    { id: "c-nia", name: "Nia Patel", email: "nia.patel@example.com", cohort: "June onboarding", role: "contributor", offboarded: false },
+    { id: "c-nia", name: "Nia Patel", email: "nia.patel@example.com", cohort: "June onboarding", role: "contributor", offboarded: true },
     { id: "c-maya", name: "Maya Chen", email: "maya.chen@example.com", cohort: "Admin", role: "admin", offboarded: false }
   ],
   assignments: [
@@ -329,8 +329,13 @@ const initialState = () => ({
   ],
   audit: [
     { id: "au-1", actor: "Admin", action: "Assessment content published", target: "Project Otter Quiz", at: "2026-06-21 09:12" },
-    { id: "au-2", actor: "Admin", action: "Retake enabled", target: "Nia Patel - Project Otter Quiz", at: "2026-06-20 14:44" },
+    { id: "au-2", actor: "Admin", action: "Contributor offboarded", target: "Nia Patel", at: "2026-06-20 14:44" },
     { id: "au-3", actor: "Admin", action: "Result changed", target: "Safety Review Scenarios", at: "2026-06-19 16:02" }
+  ],
+  offboardingLog: [
+    { id: "ob-3", contributorId: "c-nia", name: "Nia Patel", email: "nia.patel@example.com", action: "Offboarded", actor: "Maya Chen", at: "2026-06-20 14:44" },
+    { id: "ob-2", contributorId: "c-alex", name: "Alex Rivera", email: "alex.rivera@example.com", action: "Restored", actor: "Maya Chen", at: "2026-06-19 14:35" },
+    { id: "ob-1", contributorId: "c-alex", name: "Alex Rivera", email: "alex.rivera@example.com", action: "Offboarded", actor: "Maya Chen", at: "2026-06-19 11:20" }
   ]
 });
 
@@ -390,6 +395,14 @@ function normalizeState(candidate) {
   next.projectName = PROJECT_NAME;
   next.quizzes = (next.quizzes || []).map(normalizeQuiz);
   next.contributors = (next.contributors || []).map(normalizeContributor);
+  next.offboardingLog = Array.isArray(next.offboardingLog) ? next.offboardingLog : [];
+  const legacyOffboardedIds = new Set((next.assignments || [])
+    .filter((item) => item.offboarded)
+    .map((item) => item.contributorId));
+  next.contributors.forEach((person) => {
+    if (legacyOffboardedIds.has(person.id)) person.offboarded = true;
+  });
+  next.assignments = (next.assignments || []).map((item) => ({ ...item, offboarded: false }));
   return next;
 }
 
@@ -565,7 +578,7 @@ function remainingRetakes(item) {
 function assignmentStatus(item) {
   const itemQuiz = quiz(item.quizId);
   const latest = latestAttempt(item.contributorId, item.quizId);
-  if (item.offboarded) return "Offboarded";
+  if (contributor(item.contributorId)?.offboarded) return "Offboarded";
   if (!itemQuiz.projectActive) return "Project inactive";
   if (item.locked) return "Locked";
   if (!latest) return "Not started";
@@ -589,7 +602,7 @@ function adminStatus(item) {
 
 function shouldShowRequired(item) {
   const status = assignmentStatus(item);
-  return ["Not started", "In progress", "Retake available", "Locked", "Project inactive"].includes(status);
+  return ["Not started", "In progress", "Retake available", "Locked", "Project inactive", "Offboarded"].includes(status);
 }
 
 function statusClass(status) {
@@ -608,19 +621,36 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function addAudit(action, target) {
-  state.audit.unshift({
-    id: `au-${Date.now()}`,
-    actor: "Admin",
-    action,
-    target,
-    at: new Date().toLocaleString(undefined, {
+function timestampLabel() {
+  return new Date().toLocaleString(undefined, {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit"
-    })
+    });
+}
+
+function addAudit(action, target) {
+  state.audit.unshift({
+    id: `au-${Date.now()}`,
+    actor: currentUser()?.name || "Admin",
+    action,
+    target,
+    at: timestampLabel()
+  });
+}
+
+function addOffboardingLog(action, person) {
+  state.offboardingLog = state.offboardingLog || [];
+  state.offboardingLog.unshift({
+    id: `ob-${Date.now()}`,
+    contributorId: person.id,
+    name: person.name,
+    email: person.email,
+    action,
+    actor: currentUser()?.name || "Admin",
+    at: timestampLabel()
   });
 }
 
@@ -780,12 +810,15 @@ function renderContributor() {
 
 function renderContributorQuizCard(item) {
   const itemQuiz = quiz(item.quizId);
+  const person = contributor(item.contributorId);
   const status = assignmentStatus(item);
   const latest = latestAttempt(item.contributorId, item.quizId);
-  const disabled = ["Locked", "Project inactive"].includes(status) || item.offboarded;
+  const disabled = ["Locked", "Project inactive", "Offboarded"].includes(status) || person?.offboarded;
   const buttonLabel = status === "In progress" ? "Resume" : status === "Retake available" ? "Retake" : "Start";
   const message = status === "Project inactive"
     ? "This project is currently inactive. Your quiz history is still available."
+    : status === "Offboarded"
+      ? "This contributor has been offboarded. Quiz actions are disabled, but history is still available."
     : status === "Locked"
       ? "An admin has locked this quiz."
       : `${itemQuiz.estimatedMinutes} minute estimate. Active quiz time is recorded.`;
@@ -802,7 +835,7 @@ function renderContributorQuizCard(item) {
         ${latest && latest.status === "In progress" ? `<br>Saved active time: ${formatSeconds(latest.activeSeconds)}.` : ""}
       </div>
       <div class="quiz-card-actions">
-        <a class="button secondary" href="${escapeHtml(itemQuiz.guidelinesUrl)}" target="_blank" rel="noreferrer">Guidelines</a>
+        ${disabled ? `<button class="button secondary" disabled>Guidelines</button>` : `<a class="button secondary" href="${escapeHtml(itemQuiz.guidelinesUrl)}" target="_blank" rel="noreferrer">Guidelines</a>`}
         <button class="button" data-action="start-quiz" data-quiz-id="${itemQuiz.id}" ${disabled ? "disabled" : ""}>${buttonLabel}</button>
       </div>
     </article>
@@ -872,6 +905,7 @@ function renderAdmin() {
           <div class="stat-note">Assigned, no attempt yet</div>
         </div>
       </div>
+      ${renderOffboardingPanel()}
       <div class="panel">
         <div class="panel-header">
           <div>
@@ -910,6 +944,74 @@ function renderAdmin() {
       ${renderAttemptDetail()}
       ${makeAdminOpen ? renderMakeAdminModal() : ""}
     </section>
+  `;
+}
+
+function renderOffboardingPanel() {
+  const contributors = state.contributors.filter((person) => !isAdmin(person));
+  return `
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="section-title small">Offboarding</h2>
+          <div class="section-kicker">Offboarding is contributor-level. It disables quiz actions but keeps attempt history visible.</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="offboarding-grid">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Contributor</th>
+                  <th>Status</th>
+                  <th>Assigned quizzes</th>
+                  <th>Latest attempt</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${contributors.map((person) => {
+                  const assignedCount = state.assignments.filter((item) => item.contributorId === person.id).length;
+                  const latest = state.attempts
+                    .filter((attempt) => attempt.contributorId === person.id)
+                    .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))[0];
+                  return `
+                    <tr>
+                      <td>
+                        <div class="cell-title">${escapeHtml(person.name)}</div>
+                        <div class="cell-sub">${escapeHtml(person.email)}</div>
+                      </td>
+                      <td><span class="status ${person.offboarded ? "offboarded" : "passed"}">${person.offboarded ? "Offboarded" : "Active"}</span></td>
+                      <td>${assignedCount}</td>
+                      <td>${latest ? `${escapeHtml(quiz(latest.quizId)?.title || "Quiz")} - ${escapeHtml(latest.status)}` : "No attempts yet"}</td>
+                      <td>
+                        <button class="button small ${person.offboarded ? "" : "secondary"}" data-action="toggle-contributor-offboard" data-contributor-id="${person.id}">
+                          ${person.offboarded ? "Restore" : "Offboard"}
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <div class="strong">Offboarding log</div>
+            <div class="section-kicker">Tracks both offboarding and restored access.</div>
+            <div style="height: 10px;"></div>
+            <div class="audit-list">
+              ${(state.offboardingLog || []).length ? state.offboardingLog.slice(0, 8).map((event) => `
+                <div class="audit-item">
+                  <div class="strong">${escapeHtml(event.action)} - ${escapeHtml(event.name || event.email)}</div>
+                  <div class="cell-sub">${escapeHtml(event.email)} - ${escapeHtml(event.actor)} - ${escapeHtml(event.at)}</div>
+                </div>
+              `).join("") : `<div class="empty-state">No offboarding changes yet.</div>`}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -1033,6 +1135,7 @@ function renderAdminTable(rows) {
               <td>
                 <div class="cell-title">${escapeHtml(row.person.name)}</div>
                 <div class="cell-sub">${escapeHtml(row.person.email)} - ${escapeHtml(row.person.cohort)}</div>
+                ${row.person.offboarded ? `<div style="margin-top: 6px;"><span class="status offboarded">Offboarded</span></div>` : ""}
               </td>
               <td>
                 <div class="cell-title">${escapeHtml(row.itemQuiz.title)}</div>
@@ -1076,7 +1179,6 @@ function renderAttemptDetail() {
             <div class="modal-actions top">
               <button class="button secondary" data-action="allow-retake" data-assignment-id="${item.id}">Allow retake</button>
               <button class="button secondary" data-action="toggle-lock" data-assignment-id="${item.id}">${item.locked ? "Unlock" : "Lock"}</button>
-              <button class="button secondary" data-action="offboard" data-assignment-id="${item.id}">${item.offboarded ? "Restore" : "Offboard"}</button>
               <button class="button secondary" data-action="change-result" data-assignment-id="${item.id}" ${attempt.status === "In progress" ? "disabled" : ""}>Change result</button>
             </div>
           ` : ""}
@@ -1628,6 +1730,7 @@ function startQuiz(quizId, preview = false) {
   if (preview) previewReturn = { view, editorMode, selectedQuizId };
   const itemQuiz = quiz(quizId);
   const item = state.assignments.find((candidate) => candidate.contributorId === state.currentContributorId && candidate.quizId === quizId);
+  if (!preview && (currentUser()?.offboarded || !item || ["Locked", "Project inactive", "Offboarded"].includes(assignmentStatus(item)))) return;
   let attempt = !preview ? latestAttempt(state.currentContributorId, quizId) : null;
   if (!preview && (!attempt || attempt.status !== "In progress")) {
     const generatedStepKeys = orderedStepKeys(itemQuiz);
@@ -2162,12 +2265,12 @@ function getCoursePage(itemQuiz, pageId) {
 }
 
 function assignmentCountForQuiz(quizId) {
-  return state.assignments.filter((item) => item.quizId === quizId && !item.offboarded).length;
+  return state.assignments.filter((item) => item.quizId === quizId && !contributor(item.contributorId)?.offboarded).length;
 }
 
 function assignedContributorsForQuiz(quizId) {
   return state.assignments
-    .filter((item) => item.quizId === quizId && !item.offboarded)
+    .filter((item) => item.quizId === quizId && !contributor(item.contributorId)?.offboarded)
     .map((item) => contributor(item.contributorId))
     .filter(Boolean)
     .sort((a, b) => a.email.localeCompare(b.email));
@@ -2560,8 +2663,8 @@ function handleClick(event) {
   if (action === "toggle-lock") {
     toggleLock(button.dataset.assignmentId);
   }
-  if (action === "offboard") {
-    toggleOffboard(button.dataset.assignmentId);
+  if (action === "toggle-contributor-offboard") {
+    toggleContributorOffboard(button.dataset.contributorId);
   }
   if (action === "change-result") {
     changeResult(button.dataset.assignmentId);
@@ -2587,14 +2690,6 @@ function handleClick(event) {
       if (item) item.locked = true;
     });
     addAudit("Bulk lock applied", `${selectedAssignments.size} assignments`);
-    render();
-  }
-  if (action === "bulk-offboard") {
-    selectedAssignments.forEach((id) => {
-      const item = assignment(id);
-      if (item) item.offboarded = true;
-    });
-    addAudit("Bulk offboard applied", `${selectedAssignments.size} assignments`);
     render();
   }
   if (action === "export-csv") exportCsv();
@@ -2921,13 +3016,18 @@ function toggleLock(assignmentId) {
   render();
 }
 
-function toggleOffboard(assignmentId) {
-  const item = assignment(assignmentId);
-  if (!item) return;
-  item.offboarded = !item.offboarded;
-  const person = contributor(item.contributorId);
-  person.offboarded = state.assignments.some((candidate) => candidate.contributorId === person.id && candidate.offboarded);
-  addAudit(item.offboarded ? "Contributor offboarded" : "Contributor restored", `${person.email} - ${quiz(item.quizId).title}`);
+function toggleContributorOffboard(contributorId) {
+  const person = contributor(contributorId);
+  if (!person || isAdmin(person)) return;
+  person.offboarded = !person.offboarded;
+  state.assignments
+    .filter((item) => item.contributorId === person.id)
+    .forEach((item) => {
+      item.offboarded = false;
+    });
+  const action = person.offboarded ? "Offboarded" : "Restored";
+  addOffboardingLog(action, person);
+  addAudit(person.offboarded ? "Contributor offboarded" : "Contributor restored", person.email);
   render();
 }
 

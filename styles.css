@@ -558,6 +558,13 @@ tr:last-child td {
   flex-wrap: wrap;
 }
 
+.offboarding-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 16px;
+  align-items: start;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1284,6 +1291,7 @@ tr:last-child td {
   .filters,
   .hero-panel,
   .split,
+  .offboarding-grid,
   .editor-grid,
   .editor-form-grid,
   .analytics-grid,
