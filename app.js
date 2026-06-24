@@ -1587,10 +1587,13 @@ function renderEditorHome() {
                     <span class="status ${assignmentCountForQuiz(itemQuiz.id) ? "qualified" : "locked"}">${assignmentCountForQuiz(itemQuiz.id) ? "On dashboards" : "Not on dashboards"}</span>
                   </div>
                 </div>
-                <div class="quiz-card-actions">
+                <div class="quiz-card-actions editor-card-actions">
                   <button class="button" data-action="edit-quiz" data-quiz-id="${itemQuiz.id}">Edit quiz</button>
-                  <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview</button>
-                  <button class="button danger" data-action="delete-quiz" data-quiz-id="${itemQuiz.id}">Delete</button>
+                  <div class="editor-card-secondary">
+                    <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview</button>
+                    <button class="button secondary" data-action="duplicate-quiz" data-quiz-id="${itemQuiz.id}">Duplicate</button>
+                  </div>
+                  <button class="button danger-ghost" data-action="delete-quiz" data-quiz-id="${itemQuiz.id}">Delete</button>
                 </div>
               </article>
             `).join("")}
@@ -2580,6 +2583,66 @@ function insertContentAfter(quizId, afterKey, kind) {
   render();
 }
 
+function duplicateQuiz(quizId) {
+  const source = quiz(quizId);
+  if (!source) return;
+  const id = uniqueId("q");
+  const pageIdMap = new Map();
+  const questionIdMap = new Map();
+  const answerIdMap = new Map();
+  const coursePages = source.coursePages.map((page) => {
+    const nextId = uniqueId("cp");
+    pageIdMap.set(page.id, nextId);
+    return {
+      ...page,
+      id: nextId
+    };
+  });
+  const questions = source.questions.map((question) => {
+    const nextQuestionId = uniqueId("qst");
+    questionIdMap.set(question.id, nextQuestionId);
+    const answers = (question.answers || []).map((answer) => {
+      const nextAnswerId = uniqueId("ans");
+      answerIdMap.set(answer.id, nextAnswerId);
+      return {
+        ...answer,
+        id: nextAnswerId
+      };
+    });
+    return normalizeQuestionByType({
+      ...question,
+      id: nextQuestionId,
+      answers,
+      correctOrder: (question.correctOrder || []).map((answerId) => answerIdMap.get(answerId)).filter(Boolean),
+      resources: (question.resources || []).map((image) => ({ ...image, id: uniqueId("img") }))
+    });
+  });
+  const contentOrder = cleanContentOrder({
+    coursePages,
+    questions,
+    contentOrder: (source.contentOrder || []).map((key) => {
+      const { kind, id: sourceId } = splitContentKey(key);
+      const nextId = kind === "course" ? pageIdMap.get(sourceId) : questionIdMap.get(sourceId);
+      return nextId ? contentKey(kind, nextId) : null;
+    }).filter(Boolean)
+  });
+  const copy = {
+    ...source,
+    id,
+    title: `Copy of ${source.title}`,
+    status: "Draft",
+    draftDirty: true,
+    coursePages,
+    questions,
+    contentOrder
+  };
+  state.quizzes.unshift(copy);
+  selectedQuizId = id;
+  editorMode = "detail";
+  addAudit("Quiz duplicated", `${source.title} -> ${copy.title}`);
+  render();
+}
+
 function deleteQuiz(quizId) {
   const itemQuiz = quiz(quizId);
   if (!itemQuiz) return;
@@ -3082,6 +3145,9 @@ function handleClick(event) {
   }
   if (action === "create-quiz") {
     createNewQuiz();
+  }
+  if (action === "duplicate-quiz") {
+    duplicateQuiz(button.dataset.quizId);
   }
   if (action === "delete-quiz") {
     deleteQuiz(button.dataset.quizId);

@@ -342,6 +342,22 @@ a {
   flex-wrap: wrap;
 }
 
+.editor-card-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.editor-card-actions .button {
+  width: 100%;
+}
+
+.editor-card-secondary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .status {
   display: inline-flex;
   align-items: center;
@@ -466,6 +482,16 @@ a {
 
 .button.danger {
   background: var(--red);
+}
+
+.button.danger-ghost {
+  background: transparent;
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 28%, var(--line));
+}
+
+.button.danger-ghost:hover {
+  background: color-mix(in srgb, var(--red) 10%, var(--surface));
 }
 
 .button.small {
