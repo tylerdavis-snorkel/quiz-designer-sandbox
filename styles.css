@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  --bg: #f6f8fb;
+  --bg: #f9fbff;
   --surface: #ffffff;
   --surface-2: #eef5ff;
   --surface-3: #f2f6f8;
@@ -65,8 +65,8 @@ html {
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 22% 0%, rgba(36, 96, 183, 0.22), transparent 32%),
-    radial-gradient(circle at 80% 12%, rgba(80, 64, 167, 0.18), transparent 34%),
+    radial-gradient(circle at 22% 0%, rgba(36, 96, 183, 0.14), transparent 32%),
+    radial-gradient(circle at 80% 12%, rgba(80, 64, 167, 0.1), transparent 34%),
     var(--bg);
   color: var(--text);
   font-family: var(--font);
@@ -745,6 +745,13 @@ a {
   gap: 8px;
 }
 
+.editor-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .back-arrow-button {
   width: 38px;
   height: 38px;
@@ -762,6 +769,10 @@ a {
 .back-arrow-button:hover {
   background: var(--blue-soft);
   color: var(--blue-dark);
+}
+
+.discard-button {
+  min-height: 38px;
 }
 
 .editor-detail-actions {

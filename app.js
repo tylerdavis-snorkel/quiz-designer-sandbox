@@ -365,6 +365,7 @@ let view = "contributor";
 let selectedQuizId = state.selectedQuizId || state.quizzes[0].id;
 let editorMode = "home";
 let editorReadOnly = true;
+let editorSnapshot = null;
 let selectedAttemptId = null;
 let selectedHistoryAttemptId = null;
 let adminSubView = "responses";
@@ -407,6 +408,7 @@ function resetState() {
   selectedQuizId = state.selectedQuizId;
   editorMode = "home";
   editorReadOnly = true;
+  editorSnapshot = null;
   selectedAttemptId = null;
   selectedHistoryAttemptId = null;
   adminSubView = "responses";
@@ -589,6 +591,45 @@ function isAdmin(person = currentUser()) {
 
 function quiz(id) {
   return byId(state.quizzes, id);
+}
+
+function cloneValue(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function captureEditorSnapshot(quizId) {
+  const itemQuiz = quiz(quizId);
+  if (!itemQuiz) {
+    editorSnapshot = null;
+    return;
+  }
+  editorSnapshot = {
+    quizId,
+    quiz: cloneValue(itemQuiz),
+    assignments: cloneValue(state.assignments),
+    contributors: cloneValue(state.contributors)
+  };
+}
+
+function discardEditorChanges() {
+  const currentQuiz = quiz(selectedQuizId);
+  if (!editorSnapshot || editorSnapshot.quizId !== selectedQuizId || !currentQuiz) {
+    editorReadOnly = true;
+    editorSnapshot = null;
+    render();
+    return;
+  }
+  const quizIndex = state.quizzes.findIndex((candidate) => candidate.id === selectedQuizId);
+  if (quizIndex >= 0) state.quizzes[quizIndex] = normalizeQuiz(cloneValue(editorSnapshot.quiz));
+  state.assignments = cloneValue(editorSnapshot.assignments || state.assignments);
+  state.contributors = cloneValue(editorSnapshot.contributors || state.contributors).map(normalizeContributor);
+  selectedAssignments = new Set();
+  editorReadOnly = true;
+  const restoredTitle = state.quizzes[quizIndex]?.title || editorSnapshot.quiz.title;
+  editorSnapshot = null;
+  addAudit("Quiz changes discarded", restoredTitle);
+  saveState();
+  render();
 }
 
 function assignment(id) {
@@ -1663,7 +1704,10 @@ function renderEditor() {
     <section class="content">
       <div class="toolbar">
         <div class="editor-heading">
-          <button class="back-arrow-button" data-action="editor-home" aria-label="Back to all quizzes" title="Back to all quizzes">←</button>
+          <div class="editor-heading-actions">
+            <button class="back-arrow-button" data-action="editor-home" aria-label="Back to all quizzes" title="Back to all quizzes">←</button>
+            ${editorReadOnly ? "" : `<button class="button secondary discard-button" data-action="discard-editor-changes">Discard changes</button>`}
+          </div>
           <h1 class="section-title">${modeLabel}: ${escapeHtml(itemQuiz.title)}</h1>
           <div class="section-kicker">${editorReadOnly ? "Review assessment content before editing." : `One project sandbox: ${escapeHtml(PROJECT_NAME)}. Drag course pages and questions into the order contributors should see them.`}</div>
         </div>
@@ -2801,6 +2845,7 @@ function createNewQuiz() {
   selectedQuizId = id;
   editorMode = "detail";
   editorReadOnly = false;
+  captureEditorSnapshot(id);
   addAudit("Quiz created", newQuiz.title);
   render();
 }
@@ -2884,6 +2929,7 @@ function duplicateQuiz(quizId) {
   selectedQuizId = id;
   editorMode = "detail";
   editorReadOnly = false;
+  captureEditorSnapshot(id);
   addAudit("Quiz duplicated", `${source.title} -> ${copy.title}`);
   render();
 }
@@ -2908,6 +2954,7 @@ function deleteQuiz(quizId) {
   addAudit("Quiz deleted", itemQuiz.title);
   editorMode = "home";
   editorReadOnly = true;
+  editorSnapshot = null;
   render();
 }
 
@@ -3281,6 +3328,7 @@ function handleClick(event) {
     if (view === "editor") {
       editorMode = "home";
       editorReadOnly = true;
+      editorSnapshot = null;
     }
     render();
   }
@@ -3427,19 +3475,26 @@ function handleClick(event) {
   if (action === "editor-home") {
     editorMode = "home";
     editorReadOnly = true;
+    editorSnapshot = null;
     render();
   }
   if (action === "view-quiz" || action === "edit-quiz") {
     selectedQuizId = button.dataset.quizId;
     editorMode = "detail";
     editorReadOnly = action !== "edit-quiz";
+    if (editorReadOnly) editorSnapshot = null;
+    else captureEditorSnapshot(selectedQuizId);
     render();
   }
   if (action === "enter-edit-mode") {
     selectedQuizId = button.dataset.quizId || selectedQuizId;
     editorMode = "detail";
     editorReadOnly = false;
+    captureEditorSnapshot(selectedQuizId);
     render();
+  }
+  if (action === "discard-editor-changes") {
+    discardEditorChanges();
   }
   if (action === "create-quiz") {
     createNewQuiz();
@@ -3508,6 +3563,7 @@ function handleClick(event) {
     }
     itemQuiz.status = "Published";
     itemQuiz.draftDirty = false;
+    captureEditorSnapshot(itemQuiz.id);
     addAudit("Assessment content published", `${itemQuiz.title} - assign it to push to dashboards`);
     render();
   }
