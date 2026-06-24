@@ -374,6 +374,7 @@ let selectedAttemptId = null;
 let selectedHistoryAttemptId = null;
 let adminSubView = "responses";
 let makeAdminOpen = false;
+let bulkRetakeOpen = false;
 let auditLogOpen = false;
 let selectedAssignments = new Set();
 let retakeDrafts = {};
@@ -419,6 +420,7 @@ function resetState() {
   selectedHistoryAttemptId = null;
   adminSubView = "responses";
   makeAdminOpen = false;
+  bulkRetakeOpen = false;
   retakeDrafts = {};
   selectedAssignments = new Set();
   session = null;
@@ -912,7 +914,7 @@ function renderShell(content) {
   const current = currentUser();
   const title = {
     contributor: "Contributor dashboard",
-    admin: "Admin dashboard",
+    admin: "Contributor overview",
     offboarding: "Offboarding",
     editor: editorMode === "home" ? "Quiz library" : "Quiz editor",
     analytics: "Quiz analytics"
@@ -946,6 +948,7 @@ function renderShell(content) {
                 </option>
               `).join("")}
             </select>
+            ${isAdmin(current) ? `<button class="button secondary" data-action="open-make-admin">Make admin</button>` : ""}
             <button class="button secondary" data-action="toggle-theme">${state.theme === "dark" ? "Light mode" : "Dark mode"}</button>
             <button class="button ghost" data-action="reset-sandbox">Reset sandbox</button>
           </div>
@@ -953,13 +956,14 @@ function renderShell(content) {
         <nav class="top-nav" aria-label="Main">
           ${navButton("contributor", "Contributor")}
           ${isAdmin(current) ? `
-            ${navButton("admin", "Admin")}
+            ${navButton("admin", "Contributor overview")}
             ${navButton("offboarding", "Offboarding")}
             ${navButton("editor", "Quiz library")}
             ${navButton("analytics", "Analytics")}
           ` : ""}
         </nav>
         ${content}
+        ${makeAdminOpen ? renderMakeAdminModal() : ""}
       </main>
     </div>
   `;
@@ -1212,8 +1216,8 @@ function renderAdmin() {
                 <div class="section-kicker">Contributor-first view with filters, CSV export, and attempt review.</div>
               </div>
               <div class="row-actions">
+                <button class="button secondary" data-action="open-bulk-retake">Bulk retake</button>
                 <button class="button" data-action="export-csv">Export CSV</button>
-                <button class="button secondary" data-action="open-make-admin">Make admin</button>
               </div>
             </div>
             <div class="panel-body">
@@ -1226,7 +1230,7 @@ function renderAdmin() {
         </div>
       </div>
       ${renderAttemptDetail()}
-      ${makeAdminOpen ? renderMakeAdminModal() : ""}
+      ${bulkRetakeOpen ? renderBulkRetakeModal() : ""}
       ${auditLogOpen ? renderAuditLogModal() : ""}
     </section>
   `;
@@ -1393,9 +1397,18 @@ function renderOffboardingPanel() {
         </div>
       </div>
       <div class="panel-body">
-        <div class="field compact-field">
-          <label for="offboarding-search">Search contributors</label>
-          <input id="offboarding-search" class="input" data-filter="offboardingSearch" value="${escapeHtml(filters.offboardingSearch)}" placeholder="Search name, email, or cohort">
+        <div class="offboarding-tools">
+          <div class="field compact-field">
+            <label for="offboarding-search">Search contributors</label>
+            <input id="offboarding-search" class="input" data-filter="offboardingSearch" value="${escapeHtml(filters.offboardingSearch)}" placeholder="Search name, email, or cohort">
+          </div>
+          <div class="field compact-field">
+            <label for="bulk-offboard-emails">Bulk offboard emails</label>
+            <div class="inline-action-field">
+              <input id="bulk-offboard-emails" class="input" data-bulk-offboard-emails placeholder="name@example.com, name2@example.com">
+              <button class="button secondary" data-action="bulk-offboard-emails">Bulk offboard</button>
+            </div>
+          </div>
         </div>
         <div style="height: 14px;"></div>
         <div class="offboarding-grid">
@@ -1614,6 +1627,44 @@ function renderMakeAdminModal() {
         <div class="modal-actions">
           <button class="button secondary" data-action="close-make-admin">Cancel</button>
           <button class="button" data-action="make-admin-by-email">Make admin</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderBulkRetakeModal() {
+  const defaultQuizId = filters.quiz !== "All" && quiz(filters.quiz) ? filters.quiz : (selectedQuizId || state.quizzes[0]?.id);
+  return `
+    <div class="modal-backdrop" data-modal-backdrop="bulk-retake">
+      <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="bulk-retake-title">
+        <div class="modal-header">
+          <div>
+            <h2 id="bulk-retake-title" class="section-title small">Bulk retake</h2>
+            <div class="section-kicker">Grant retakes by email and reset active course progress for the selected quiz.</div>
+          </div>
+          <button class="button ghost" data-action="close-bulk-retake">Close</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label for="bulk-retake-quiz">Quiz</label>
+            <select id="bulk-retake-quiz" class="select" data-bulk-retake-quiz>
+              ${state.quizzes.map((itemQuiz) => `<option value="${itemQuiz.id}" ${itemQuiz.id === defaultQuizId ? "selected" : ""}>${escapeHtml(itemQuiz.title)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field">
+            <label for="bulk-retake-count">Retakes to grant</label>
+            <input id="bulk-retake-count" class="input" type="number" min="0" value="1" data-bulk-retake-count>
+          </div>
+          <div class="field">
+            <label for="bulk-retake-emails">Contributor emails</label>
+            <textarea id="bulk-retake-emails" class="textarea" data-bulk-retake-emails placeholder="alex.rivera@example.com, nia.patel@example.com"></textarea>
+          </div>
+          <div class="helper-text">Previous submitted attempts remain in history. In-progress attempts for this quiz are cleared so the contributor starts cleanly.</div>
+        </div>
+        <div class="modal-actions">
+          <button class="button secondary" data-action="close-bulk-retake">Cancel</button>
+          <button class="button" data-action="apply-bulk-retake">Apply retakes</button>
         </div>
       </div>
     </div>
@@ -3208,6 +3259,62 @@ function makeAdminByEmail() {
   render();
 }
 
+function bulkOffboardByEmail() {
+  const input = document.querySelector("[data-bulk-offboard-emails]");
+  const emails = parseEmailList(input?.value || "");
+  if (!emails.length) {
+    alert("Enter at least one valid email address.");
+    return;
+  }
+  const people = emails
+    .map(contributorForEmail)
+    .filter((person) => person && !isAdmin(person) && !person.offboarded);
+  if (!people.length) {
+    alert("No active contributor accounts matched those emails.");
+    return;
+  }
+  people.forEach((person) => setContributorOffboarded(person, true));
+  input.value = "";
+  addAudit("Bulk contributors offboarded", `${people.length} contributor${people.length === 1 ? "" : "s"}`);
+  render();
+}
+
+function applyBulkRetake() {
+  const quizId = document.querySelector("[data-bulk-retake-quiz]")?.value;
+  const itemQuiz = quiz(quizId);
+  const emails = parseEmailList(document.querySelector("[data-bulk-retake-emails]")?.value || "");
+  const count = Number(document.querySelector("[data-bulk-retake-count]")?.value);
+  if (!itemQuiz) {
+    alert("Choose a quiz.");
+    return;
+  }
+  if (!emails.length) {
+    alert("Enter at least one valid email address.");
+    return;
+  }
+  if (!Number.isFinite(count) || count < 0) {
+    alert("Enter a retake count of 0 or higher.");
+    return;
+  }
+  let updated = 0;
+  emails.forEach((email) => {
+    const person = ensureContributorByEmail(email);
+    if (isAdmin(person)) return;
+    const item = ensureAssignment(person.id, itemQuiz.id);
+    item.retakesAllowed = Number(item.retakesUsed || 0) + Math.round(count);
+    item.locked = false;
+    state.attempts = state.attempts.filter((attempt) => !(attempt.contributorId === person.id && attempt.quizId === itemQuiz.id && attempt.status === "In progress"));
+    updated += 1;
+  });
+  if (!updated) {
+    alert("No contributor accounts were updated.");
+    return;
+  }
+  bulkRetakeOpen = false;
+  addAudit("Bulk retakes updated", `${itemQuiz.title} - ${updated} contributor${updated === 1 ? "" : "s"} - ${Math.round(count)} retake${Math.round(count) === 1 ? "" : "s"}`);
+  render();
+}
+
 function emailListForQuiz(quizId) {
   const input = document.querySelector(`[data-assign-email-list="${quizId}"]`);
   return parseEmailList(input?.value || "");
@@ -3444,6 +3551,11 @@ function handleClick(event) {
     render();
     return;
   }
+  if (event.target.dataset.modalBackdrop === "bulk-retake") {
+    bulkRetakeOpen = false;
+    render();
+    return;
+  }
   if (event.target.dataset.modalBackdrop === "images") {
     imageViewer = null;
     render();
@@ -3487,6 +3599,7 @@ function handleClick(event) {
       selectedAttemptId = null;
       selectedHistoryAttemptId = null;
       makeAdminOpen = false;
+      bulkRetakeOpen = false;
       auditLogOpen = false;
       versionHistoryQuizId = null;
     }
@@ -3575,6 +3688,7 @@ function handleClick(event) {
   }
   if (action === "open-make-admin") {
     makeAdminOpen = true;
+    bulkRetakeOpen = false;
     render();
   }
   if (action === "close-make-admin") {
@@ -3591,6 +3705,21 @@ function handleClick(event) {
   }
   if (action === "make-admin-by-email") {
     makeAdminByEmail();
+  }
+  if (action === "open-bulk-retake") {
+    bulkRetakeOpen = true;
+    makeAdminOpen = false;
+    render();
+  }
+  if (action === "close-bulk-retake") {
+    bulkRetakeOpen = false;
+    render();
+  }
+  if (action === "apply-bulk-retake") {
+    applyBulkRetake();
+  }
+  if (action === "bulk-offboard-emails") {
+    bulkOffboardByEmail();
   }
   if (action === "retake-step") {
     adjustRetakeDraft(button.dataset.assignmentId, Number(button.dataset.delta || 0));
@@ -4074,16 +4203,23 @@ function scoreWrittenAttempt(attemptId) {
 function toggleContributorOffboard(contributorId) {
   const person = contributor(contributorId);
   if (!person || isAdmin(person)) return;
-  person.offboarded = !person.offboarded;
+  setContributorOffboarded(person, !person.offboarded);
+  addAudit(person.offboarded ? "Contributor offboarded" : "Contributor restored", person.email);
+  render();
+}
+
+function setContributorOffboarded(person, offboarded) {
+  if (!person || isAdmin(person)) return;
+  const changed = person.offboarded !== offboarded;
+  person.offboarded = offboarded;
   state.assignments
     .filter((item) => item.contributorId === person.id)
     .forEach((item) => {
       item.offboarded = false;
     });
+  if (!changed) return;
   const action = person.offboarded ? "Offboarded" : "Restored";
   addOffboardingLog(action, person);
-  addAudit(person.offboarded ? "Contributor offboarded" : "Contributor restored", person.email);
-  render();
 }
 
 function changeResult(assignmentId) {

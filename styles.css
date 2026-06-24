@@ -1097,6 +1097,28 @@ tr:last-child td {
   align-items: start;
 }
 
+.offboarding-tools {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(280px, 1.15fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.inline-action-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.inline-action-field .input {
+  min-width: 0;
+}
+
+.inline-action-field .button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2211,6 +2233,7 @@ td,
   .admin-dashboard-grid,
   .split,
   .offboarding-grid,
+  .offboarding-tools,
   .editor-grid,
   .editor-form-grid,
   .analytics-grid,
