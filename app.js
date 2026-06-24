@@ -758,7 +758,9 @@ function renderShell(content) {
       <main class="main">
         <header class="topbar">
           <div class="topbar-heading">
-            <div class="brand-mark">${auditIconSvg("shield")}</div>
+            <div class="brand-logo" aria-label="Snorkel">
+              <img src="https://s46486.pcdn.co/wp-content/uploads/2023/05/snorkel_logo_header-1.svg" alt="Snorkel">
+            </div>
             <div>
               <div class="topbar-title">${escapeHtml(title)}</div>
               <div class="topbar-subtitle">${escapeHtml(subtitle)}</div>
