@@ -79,6 +79,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+body[data-view="take"] {
+  background:
+    linear-gradient(180deg, #f8fbff 0%, #f4f7fc 44%, #f9fbff 100%);
+}
+
 button,
 input,
 select,
@@ -1687,6 +1692,14 @@ tr:last-child td {
   gap: 18px;
 }
 
+.question-layout.no-reference {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.prompt-text {
+  white-space: normal;
+}
+
 .answer-list {
   display: grid;
   gap: 10px;
@@ -1972,6 +1985,25 @@ tr:last-child td {
   max-height: min(520px, 58vh);
   overflow: auto;
   padding-right: 4px;
+}
+
+.version-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(520px, 58vh);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.version-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
 .audit-item {

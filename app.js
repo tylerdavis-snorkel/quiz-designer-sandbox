@@ -21,6 +21,7 @@ const initialState = () => ({
       guidelinesUrl: "https://docs.google.com/document/d/example-project-otter-guidelines",
       passThreshold: 80,
       retakeLimit: 0,
+      unlimitedRetakes: false,
       estimatedMinutes: 15,
       randomizeQuestions: true,
       randomizeAnswers: true,
@@ -102,6 +103,7 @@ const initialState = () => ({
       guidelinesUrl: "https://docs.google.com/document/d/example-safety-review-guidelines",
       passThreshold: 82,
       retakeLimit: 0,
+      unlimitedRetakes: false,
       estimatedMinutes: 18,
       randomizeQuestions: true,
       randomizeAnswers: true,
@@ -179,6 +181,7 @@ const initialState = () => ({
       guidelinesUrl: "https://docs.google.com/document/d/example-search-quality-guidelines",
       passThreshold: 85,
       retakeLimit: 0,
+      unlimitedRetakes: false,
       estimatedMinutes: 16,
       randomizeQuestions: true,
       randomizeAnswers: true,
@@ -366,6 +369,7 @@ let selectedQuizId = state.selectedQuizId || state.quizzes[0].id;
 let editorMode = "home";
 let editorReadOnly = true;
 let editorSnapshot = null;
+let versionHistoryQuizId = null;
 let selectedAttemptId = null;
 let selectedHistoryAttemptId = null;
 let adminSubView = "responses";
@@ -409,6 +413,7 @@ function resetState() {
   editorMode = "home";
   editorReadOnly = true;
   editorSnapshot = null;
+  versionHistoryQuizId = null;
   selectedAttemptId = null;
   selectedHistoryAttemptId = null;
   adminSubView = "responses";
@@ -438,7 +443,40 @@ function normalizeState(candidate) {
     if (legacyOffboardedIds.has(person.id)) person.offboarded = true;
   });
   next.assignments = (next.assignments || []).map((item) => ({ ...item, offboarded: false }));
+  next.quizVersions = normalizeQuizVersions(next);
   return next;
+}
+
+function normalizeQuizVersions(next) {
+  const existing = Array.isArray(next.quizVersions) ? next.quizVersions : [];
+  const normalized = existing
+    .filter((version) => next.quizzes.some((itemQuiz) => itemQuiz.id === version.quizId))
+    .map((version) => {
+      const itemQuiz = next.quizzes.find((candidate) => candidate.id === version.quizId);
+      const snapshot = normalizeQuiz(cloneValue(version.quiz || itemQuiz));
+      return {
+        id: version.id || uniqueId("ver"),
+        quizId: version.quizId,
+        title: version.title || "Saved version",
+        createdAt: version.createdAt || new Date().toISOString(),
+        actor: version.actor || "System",
+        note: version.note || "Saved quiz content",
+        quiz: snapshot
+      };
+    });
+  next.quizzes.forEach((itemQuiz) => {
+    if (normalized.some((version) => version.quizId === itemQuiz.id)) return;
+    normalized.push({
+      id: `ver-${itemQuiz.id}-initial`,
+      quizId: itemQuiz.id,
+      title: itemQuiz.status === "Published" && !itemQuiz.draftDirty ? "Published version 1" : "Initial draft",
+      createdAt: new Date().toISOString(),
+      actor: "System",
+      note: "Starting snapshot",
+      quiz: cloneValue(itemQuiz)
+    });
+  });
+  return normalized.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
 function normalizeContributor(person) {
@@ -453,6 +491,7 @@ function normalizeQuiz(itemQuiz) {
   itemQuiz.project = PROJECT_NAME;
   itemQuiz.status = itemQuiz.status || "Draft";
   itemQuiz.draftDirty = Boolean(itemQuiz.draftDirty || itemQuiz.status === "Draft");
+  itemQuiz.unlimitedRetakes = Boolean(itemQuiz.unlimitedRetakes);
   itemQuiz.coursePages = (itemQuiz.coursePages || []).map((page, index) => ({
     id: page.id || `cp-${itemQuiz.id}-${index + 1}`,
     title: page.title ?? "Untitled course page",
@@ -573,6 +612,10 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function multilineText(value) {
+  return escapeHtml(value).replace(/\n/g, "<br>");
+}
+
 function byId(collection, id) {
   return collection.find((item) => item.id === id);
 }
@@ -632,6 +675,61 @@ function discardEditorChanges() {
   render();
 }
 
+function versionsForQuiz(quizId) {
+  return (state.quizVersions || [])
+    .filter((version) => version.quizId === quizId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function createQuizVersion(quizId, note = "Saved quiz content") {
+  const itemQuiz = quiz(quizId);
+  if (!itemQuiz) return null;
+  state.quizVersions = state.quizVersions || [];
+  const savedVersions = versionsForQuiz(quizId);
+  const publishedCount = savedVersions.filter((version) => String(version.title || "").startsWith("Published version")).length;
+  const version = {
+    id: uniqueId("ver"),
+    quizId,
+    title: note === "Published content" ? `Published version ${publishedCount + 1}` : `Version ${savedVersions.length + 1}`,
+    createdAt: new Date().toISOString(),
+    actor: currentUser()?.name || "Admin",
+    note,
+    quiz: cloneValue(itemQuiz)
+  };
+  state.quizVersions.unshift(version);
+  return version;
+}
+
+function quizVersionSummary(snapshot) {
+  const courseCount = snapshot.coursePages?.length || 0;
+  const questionCount = snapshot.questions?.length || 0;
+  return `${courseCount} course page${courseCount === 1 ? "" : "s"} - ${questionCount} question${questionCount === 1 ? "" : "s"} - threshold ${snapshot.passThreshold || 0}%`;
+}
+
+function restoreQuizVersion(versionId) {
+  const version = (state.quizVersions || []).find((candidate) => candidate.id === versionId);
+  if (!version) return;
+  const currentQuiz = quiz(version.quizId);
+  if (!currentQuiz) return;
+  if (!confirm(`Restore "${version.title}" for "${currentQuiz.title}"? The restored quiz will become unpublished changes until you publish it.`)) return;
+  if (!editorSnapshot || editorSnapshot.quizId !== currentQuiz.id) captureEditorSnapshot(currentQuiz.id);
+  const quizIndex = state.quizzes.findIndex((candidate) => candidate.id === currentQuiz.id);
+  const restored = normalizeQuiz({
+    ...cloneValue(version.quiz),
+    id: currentQuiz.id,
+    draftDirty: true,
+    status: currentQuiz.status === "Published" ? "Published" : "Draft"
+  });
+  state.quizzes[quizIndex] = restored;
+  selectedQuizId = restored.id;
+  editorMode = "detail";
+  editorReadOnly = false;
+  versionHistoryQuizId = null;
+  addAudit("Quiz version restored", `${restored.title} - ${version.title}`);
+  saveState();
+  render();
+}
+
 function assignment(id) {
   return byId(state.assignments, id);
 }
@@ -654,7 +752,12 @@ function attemptsFor(contributorId, quizId) {
 }
 
 function remainingRetakes(item) {
+  if (quiz(item.quizId)?.unlimitedRetakes) return Infinity;
   return Math.max(0, Number(item.retakesAllowed || 0) - Number(item.retakesUsed || 0));
+}
+
+function retakeLabel(item) {
+  return quiz(item.quizId)?.unlimitedRetakes ? "Unlimited" : String(remainingRetakes(item));
 }
 
 function assignmentStatus(item) {
@@ -757,6 +860,7 @@ function render() {
   if (!isAdmin() && ["admin", "offboarding", "editor", "analytics"].includes(view)) {
     view = "contributor";
   }
+  document.body.dataset.view = view;
   if (view === "take") {
     renderQuizRunner();
     startTimer();
@@ -1594,7 +1698,7 @@ function renderAdminTable(rows) {
               <td>${row.latest && row.latest.score !== null ? `${row.latest.score}%` : "Pending"}</td>
               <td>${row.latest ? formatSeconds(row.latest.activeSeconds) : "-"}</td>
               <td>${escapeHtml(responseDateLabel(row))}</td>
-              <td>${remainingRetakes(row.item)}</td>
+              <td>${escapeHtml(retakeLabel(row.item))}</td>
               <td>
                 <div class="row-actions">
                   <button class="button small secondary" data-action="view-attempt" data-attempt-id="${row.latest ? row.latest.id : ""}" ${row.latest ? "" : "disabled"}>View attempt</button>
@@ -1707,6 +1811,7 @@ function renderEditor() {
           <div class="editor-heading-actions">
             <button class="back-arrow-button" data-action="editor-home" aria-label="Back to all quizzes" title="Back to all quizzes">←</button>
             ${editorReadOnly ? "" : `<button class="button secondary discard-button" data-action="discard-editor-changes">Discard changes</button>`}
+            <button class="button secondary discard-button" data-action="open-version-history" data-quiz-id="${itemQuiz.id}">Version history</button>
           </div>
           <h1 class="section-title">${modeLabel}: ${escapeHtml(itemQuiz.title)}</h1>
           <div class="section-kicker">${editorReadOnly ? "Review assessment content before editing." : `One project sandbox: ${escapeHtml(PROJECT_NAME)}. Drag course pages and questions into the order contributors should see them.`}</div>
@@ -1741,6 +1846,7 @@ function renderEditor() {
               ${editorNumber("Initial retake limit", "retakeLimit", itemQuiz.retakeLimit, "retakes")}
               ${editorNumber("Estimated active time", "estimatedMinutes", itemQuiz.estimatedMinutes, "minutes")}
               ${editorToggle("Project active", "projectActive", itemQuiz.projectActive)}
+              ${editorToggle("Unlimited retakes", "unlimitedRetakes", itemQuiz.unlimitedRetakes)}
               ${editorToggle("Randomize questions", "randomizeQuestions", itemQuiz.randomizeQuestions)}
               ${editorToggle("Randomize answer choices", "randomizeAnswers", itemQuiz.randomizeAnswers)}
             </div>
@@ -1763,7 +1869,40 @@ function renderEditor() {
           </div>
         </div>
       </div>
+      ${versionHistoryQuizId === itemQuiz.id ? renderVersionHistoryModal(itemQuiz) : ""}
     </section>
+  `;
+}
+
+function renderVersionHistoryModal(itemQuiz) {
+  const versions = versionsForQuiz(itemQuiz.id);
+  return `
+    <div class="modal-backdrop" data-modal-backdrop="version-history">
+      <div class="modal-card audit-modal" role="dialog" aria-modal="true" aria-labelledby="version-history-title">
+        <div class="modal-header">
+          <div>
+            <h2 id="version-history-title" class="section-title small">Version history</h2>
+            <div class="section-kicker">${escapeHtml(itemQuiz.title)}. Restored versions become unpublished changes.</div>
+          </div>
+          <button class="button ghost" data-action="close-version-history">Close</button>
+        </div>
+        <div class="modal-body">
+          <div class="version-list">
+            ${versions.length ? versions.map((version, index) => `
+              <div class="version-row">
+                <div>
+                  <div class="strong">${escapeHtml(version.title)} ${index === 0 ? `<span class="status qualified">Latest saved</span>` : ""}</div>
+                  <div class="cell-sub">${escapeHtml(auditTimeLabel(version.createdAt))} - ${escapeHtml(version.actor || "Admin")}</div>
+                  <div class="cell-sub">${escapeHtml(version.note || "Saved quiz content")}</div>
+                  <div class="cell-sub">${escapeHtml(quizVersionSummary(version.quiz || {}))}</div>
+                </div>
+                <button class="button small secondary" data-action="restore-version" data-version-id="${version.id}">Restore</button>
+              </div>
+            `).join("") : `<div class="empty-state">No saved versions yet. Publishing creates a version snapshot.</div>`}
+          </div>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -1804,7 +1943,7 @@ function renderEditorHome() {
                   ${itemQuiz.questions.length} question${itemQuiz.questions.length === 1 ? "" : "s"} - ${assignmentCountForQuiz(itemQuiz.id)} assigned
                 </div>
                 <div class="quiz-card-actions editor-card-actions">
-                  <button class="button" data-action="view-quiz" data-quiz-id="${itemQuiz.id}">View quiz</button>
+                  <button class="button" data-action="view-quiz" data-quiz-id="${itemQuiz.id}">View/Edit</button>
                   <div class="editor-card-secondary">
                     <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview</button>
                     <div class="card-menu">
@@ -1852,11 +1991,12 @@ function editorNumber(label, field, value, suffix) {
 }
 
 function editorToggle(label, field, enabled) {
+  const description = field === "projectActive" ? "Inactive projects stay visible but disabled." : "";
   return `
     <div class="toggle-row">
       <div>
         <div class="strong">${escapeHtml(label)}</div>
-        <div class="cell-sub">${field === "projectActive" ? "Inactive projects stay visible but disabled." : "Used when each attempt starts."}</div>
+        ${description ? `<div class="cell-sub">${escapeHtml(description)}</div>` : ""}
       </div>
       <button class="switch ${enabled ? "is-on" : ""}" data-action="toggle-editor" data-editor-field="${field}" aria-label="${escapeHtml(label)}" ${editorDisabledAttr()}><span></span></button>
     </div>
@@ -2449,11 +2589,11 @@ function renderCourseStep(page) {
 function renderQuestionStep(question) {
   const resources = question.resources || [];
   return `
-    <div class="question-layout">
+    <div class="question-layout ${resources.length ? "" : "no-reference"}">
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2 class="section-title small">${escapeHtml(question.prompt)}</h2>
+            <h2 class="section-title small prompt-text">${multilineText(question.prompt)}</h2>
             <div class="section-kicker">${escapeHtml(question.type)} - weight ${question.weight}</div>
           </div>
         </div>
@@ -2463,7 +2603,7 @@ function renderQuestionStep(question) {
           ${question.hint && session.hintOpen[question.id] ? `<div style="height: 10px;"></div><div class="hint-box">${escapeHtml(question.hint)}</div>` : ""}
         </div>
       </section>
-      <aside class="panel">
+      ${resources.length ? `<aside class="panel">
         <div class="panel-header">
           <div>
             <h2 class="section-title small">Reference</h2>
@@ -2471,18 +2611,14 @@ function renderQuestionStep(question) {
           </div>
         </div>
         <div class="panel-body">
-          ${resources.length ? `
-            <div class="reference-tile has-resources">
-              <div class="strong">Images needed for this question</div>
-              <div class="cell-sub">${resources.length} image${resources.length === 1 ? "" : "s"} available in a scrollable viewer.</div>
-            </div>
-            <div style="height: 10px;"></div>
-            <button class="button" data-action="view-question-images" data-question-id="${question.id}">Open images</button>
-          ` : `
-            <div class="reference-tile">No resource images uploaded</div>
-          `}
+          <div class="reference-tile has-resources">
+            <div class="strong">Images needed for this question</div>
+            <div class="cell-sub">${resources.length} image${resources.length === 1 ? "" : "s"} available in a scrollable viewer.</div>
+          </div>
+          <div style="height: 10px;"></div>
+          <button class="button" data-action="view-question-images" data-question-id="${question.id}">Open images</button>
         </div>
-      </aside>
+      </aside>` : ""}
     </div>
   `;
 }
@@ -2727,7 +2863,7 @@ function exportCsv() {
       row.status,
       row.latest?.score ?? "",
       row.latest?.activeSeconds ?? "",
-      remainingRetakes(row.item)
+      retakeLabel(row.item)
     ].map(csvCell).join(","))
   ];
   const blob = new Blob([lines.join("\n")], { type: "text/csv" });
@@ -2832,6 +2968,7 @@ function createNewQuiz() {
     guidelinesUrl: "",
     passThreshold: 80,
     retakeLimit: 0,
+    unlimitedRetakes: false,
     estimatedMinutes: 15,
     randomizeQuestions: true,
     randomizeAnswers: true,
@@ -3292,6 +3429,11 @@ function handleClick(event) {
     render();
     return;
   }
+  if (event.target.dataset.modalBackdrop === "version-history") {
+    versionHistoryQuizId = null;
+    render();
+    return;
+  }
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
@@ -3321,6 +3463,7 @@ function handleClick(event) {
       selectedHistoryAttemptId = null;
       makeAdminOpen = false;
       auditLogOpen = false;
+      versionHistoryQuizId = null;
     }
     view = button.dataset.view;
     if (view === "editor") {
@@ -3474,6 +3617,7 @@ function handleClick(event) {
     editorMode = "home";
     editorReadOnly = true;
     editorSnapshot = null;
+    versionHistoryQuizId = null;
     render();
   }
   if (action === "view-quiz" || action === "edit-quiz") {
@@ -3493,6 +3637,17 @@ function handleClick(event) {
   }
   if (action === "discard-editor-changes") {
     discardEditorChanges();
+  }
+  if (action === "open-version-history") {
+    versionHistoryQuizId = button.dataset.quizId || selectedQuizId;
+    render();
+  }
+  if (action === "close-version-history") {
+    versionHistoryQuizId = null;
+    render();
+  }
+  if (action === "restore-version") {
+    restoreQuizVersion(button.dataset.versionId);
   }
   if (action === "create-quiz") {
     createNewQuiz();
@@ -3561,6 +3716,7 @@ function handleClick(event) {
     }
     itemQuiz.status = "Published";
     itemQuiz.draftDirty = false;
+    createQuizVersion(itemQuiz.id, "Published content");
     captureEditorSnapshot(itemQuiz.id);
     addAudit("Assessment content published", `${itemQuiz.title} - assign it to push to dashboards`);
     render();
