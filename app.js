@@ -1796,14 +1796,12 @@ function renderEditorHome() {
                 <div>
                   <h2 class="quiz-card-title">${escapeHtml(itemQuiz.title)}</h2>
                   <div class="quiz-card-meta">
-                    <span class="status ${itemQuiz.status === "Published" ? "qualified" : "submitted"}">${escapeHtml(itemQuiz.status)}</span>
-                    <span class="status ${itemQuiz.draftDirty ? "retake-available" : "locked"}" data-dirty-badge="${itemQuiz.id}">${itemQuiz.draftDirty ? "Unpublished changes" : "No unpublished changes"}</span>
+                    <span class="status ${itemQuiz.draftDirty ? "retake-available" : itemQuiz.status === "Published" ? "qualified" : "submitted"}" data-dirty-badge="${itemQuiz.id}">${escapeHtml(itemQuiz.draftDirty ? "Unpublished changes" : itemQuiz.status)}</span>
                     <span class="status ${assignmentCountForQuiz(itemQuiz.id) ? "qualified" : "locked"}">${assignmentCountForQuiz(itemQuiz.id) ? "On dashboards" : "Not on dashboards"}</span>
                   </div>
                 </div>
                 <div class="quiz-card-body">
                   ${itemQuiz.questions.length} question${itemQuiz.questions.length === 1 ? "" : "s"} - ${assignmentCountForQuiz(itemQuiz.id)} assigned
-                  ${itemQuiz.draftDirty ? `<div class="library-warning">Not visible on dashboards until published.</div>` : ""}
                 </div>
                 <div class="quiz-card-actions editor-card-actions">
                   <button class="button" data-action="view-quiz" data-quiz-id="${itemQuiz.id}">View quiz</button>
