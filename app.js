@@ -1721,9 +1721,14 @@ function renderEditorHome() {
                   <button class="button" data-action="edit-quiz" data-quiz-id="${itemQuiz.id}">Edit quiz</button>
                   <div class="editor-card-secondary">
                     <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview</button>
-                    <button class="button secondary" data-action="duplicate-quiz" data-quiz-id="${itemQuiz.id}">Duplicate</button>
+                    <div class="card-menu">
+                      <button class="button secondary menu-trigger" type="button" aria-label="More quiz actions">...</button>
+                      <div class="card-menu-panel" role="menu">
+                        <button type="button" data-action="duplicate-quiz" data-quiz-id="${itemQuiz.id}">Duplicate</button>
+                        <button type="button" class="danger-menu-item" data-action="delete-quiz" data-quiz-id="${itemQuiz.id}">Delete</button>
+                      </div>
+                    </div>
                   </div>
-                  <button class="button danger-ghost" data-action="delete-quiz" data-quiz-id="${itemQuiz.id}">Delete</button>
                 </div>
               </article>
             `).join("")}
