@@ -758,9 +758,6 @@ function renderShell(content) {
       <main class="main">
         <header class="topbar">
           <div class="topbar-heading">
-            <div class="brand-logo" aria-label="Snorkel">
-              <img src="https://s46486.pcdn.co/wp-content/uploads/2023/05/snorkel_logo_header-1.svg" alt="Snorkel">
-            </div>
             <div>
               <div class="topbar-title">${escapeHtml(title)}</div>
               <div class="topbar-subtitle">${escapeHtml(subtitle)}</div>
@@ -768,6 +765,9 @@ function renderShell(content) {
             </div>
           </div>
           <div class="topbar-actions">
+            <div class="brand-logo" aria-label="Snorkel">
+              <img src="https://s46486.pcdn.co/wp-content/uploads/2023/05/snorkel_logo_header-1.svg" alt="Snorkel">
+            </div>
             <select class="select" data-action="switch-contributor" aria-label="Current contributor">
               ${state.contributors.map((person) => `
                 <option value="${person.id}" ${person.id === state.currentContributorId ? "selected" : ""}>
