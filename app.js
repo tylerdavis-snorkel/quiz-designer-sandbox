@@ -364,6 +364,7 @@ let state = loadState();
 let view = "contributor";
 let selectedQuizId = state.selectedQuizId || state.quizzes[0].id;
 let editorMode = "home";
+let editorReadOnly = true;
 let selectedAttemptId = null;
 let selectedHistoryAttemptId = null;
 let adminSubView = "responses";
@@ -381,8 +382,6 @@ let filters = {
   quiz: "All",
   status: "All",
   score: "All",
-  cohort: "All",
-  responseSort: "Most recent",
   metricQuiz: "All",
   offboardingSearch: ""
 };
@@ -407,6 +406,7 @@ function resetState() {
   state = initialState();
   selectedQuizId = state.selectedQuizId;
   editorMode = "home";
+  editorReadOnly = true;
   selectedAttemptId = null;
   selectedHistoryAttemptId = null;
   adminSubView = "responses";
@@ -667,7 +667,7 @@ function attemptTimeValue(attempt) {
   return new Date(attempt.submittedAt || attempt.startedAt || 0).getTime() || 0;
 }
 
-function responseSortValue(row) {
+function attemptSortValue(row) {
   return row.latest ? attemptTimeValue(row.latest) : (new Date(row.item.assignedAt || 0).getTime() || 0);
 }
 
@@ -750,7 +750,7 @@ function renderShell(content) {
     contributor: "Complete required assessments and review your history.",
     admin: "Manage contributor qualifications and review quality.",
     offboarding: "Manage access while preserving read-only history.",
-    editor: editorMode === "home" ? "Create, manage, publish, and assign qualification quizzes." : "Build course pages, questions, scoring, and assignments.",
+    editor: editorMode === "home" ? "Create, manage, publish, and assign qualification quizzes." : "View assessment details, then edit when changes are needed.",
     analytics: "Review question performance and score patterns."
   }[view];
   return `
@@ -1167,7 +1167,7 @@ function auditIconSvg(type) {
 }
 
 function renderAdminSubTabs() {
-  const writtenCount = writtenReviewRows().length;
+  const writtenCount = pendingWrittenReviewRows().length;
   return `
     <div class="subtabs" aria-label="Admin sections">
       <button class="subtab ${adminSubView === "responses" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="responses">Responses</button>
@@ -1180,7 +1180,7 @@ function renderAdminSubTabs() {
 }
 
 function renderAdminReviewCallout() {
-  const count = writtenReviewRows().length;
+  const count = pendingWrittenReviewRows().length;
   if (!count) return "";
   return `
     <div class="review-callout">
@@ -1284,7 +1284,7 @@ function renderOffboardingPanel() {
   `;
 }
 
-function writtenReviewRows() {
+function writtenReviewRows({ includeIgnored = false, ignored = false } = {}) {
   return state.attempts
     .filter((attempt) => attempt.status === "Submitted" || attempt.manualReview)
     .map((attempt) => ({
@@ -1293,11 +1293,21 @@ function writtenReviewRows() {
       itemQuiz: quiz(attempt.quizId)
     }))
     .filter((row) => row.person && row.itemQuiz && !row.person.offboarded)
+    .filter((row) => includeIgnored || Boolean(row.attempt.manualReviewIgnored) === ignored)
     .sort((a, b) => attemptTimeValue(b.attempt) - attemptTimeValue(a.attempt));
 }
 
+function pendingWrittenReviewRows() {
+  return writtenReviewRows({ ignored: false });
+}
+
+function ignoredWrittenReviewRows() {
+  return writtenReviewRows({ ignored: true });
+}
+
 function renderWrittenScoringPanel() {
-  const rows = writtenReviewRows();
+  const rows = pendingWrittenReviewRows();
+  const ignoredRows = ignoredWrittenReviewRows();
   return `
     <div class="panel">
       <div class="panel-header">
@@ -1346,6 +1356,7 @@ function renderWrittenScoringPanel() {
                       <td>
                         <div class="row-actions">
                           <button class="button small secondary" data-action="view-attempt" data-attempt-id="${attempt.id}">Review</button>
+                          <button class="button small ghost" data-action="ignore-written-review" data-attempt-id="${attempt.id}">Ignore</button>
                           <button class="button small" data-action="score-written-attempt" data-attempt-id="${attempt.id}">Save score</button>
                         </div>
                       </td>
@@ -1356,6 +1367,56 @@ function renderWrittenScoringPanel() {
             </table>
           </div>
         ` : `<div class="empty-state">No written responses need scoring right now.</div>`}
+        ${ignoredRows.length ? `
+          <div class="ignored-review-section">
+            <div class="table-section-heading">
+              <div>
+                <div class="strong">Ignored admin reviews</div>
+                <div class="cell-sub">Hidden from the notification count, but still available to review later.</div>
+              </div>
+              <span class="status locked">${ignoredRows.length} ignored</span>
+            </div>
+            <div class="table-wrap compact-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Contributor</th>
+                    <th>Quiz</th>
+                    <th>Written response</th>
+                    <th>Submitted</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${ignoredRows.map(({ attempt, person, itemQuiz }) => {
+                    const writtenQuestions = itemQuiz.questions.filter((question) => question.type === "Long text");
+                    const preview = writtenQuestions.map((question) => attempt.answers?.[question.id]).filter(Boolean).join(" ");
+                    return `
+                      <tr>
+                        <td>
+                          <div class="cell-title">${escapeHtml(person.name)}</div>
+                          <div class="cell-sub">${escapeHtml(person.email)}</div>
+                        </td>
+                        <td>
+                          <div class="cell-title">${escapeHtml(itemQuiz.title)}</div>
+                          <div class="cell-sub">Threshold ${itemQuiz.passThreshold}%</div>
+                        </td>
+                        <td><div class="written-preview">${escapeHtml(preview || "No written response captured.")}</div></td>
+                        <td>${formatDate(attempt.submittedAt)}</td>
+                        <td>
+                          <div class="row-actions">
+                            <button class="button small secondary" data-action="view-attempt" data-attempt-id="${attempt.id}">Review</button>
+                            <button class="button small" data-action="restore-written-review" data-attempt-id="${attempt.id}">Restore</button>
+                          </div>
+                        </td>
+                      </tr>
+                    `;
+                  }).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ` : ""}
       </div>
     </div>
   `;
@@ -1406,7 +1467,6 @@ function adminStats() {
 }
 
 function renderFilters() {
-  const cohorts = ["All", ...new Set(state.contributors.map((person) => person.cohort))];
   const statuses = ["All", "Passed", "Failed", "In progress", "Not started"];
   return `
     <div class="filters">
@@ -1433,18 +1493,6 @@ function renderFilters() {
           ${["All", "90-100", "80-89", "Below 80", "Pending"].map((score) => `<option ${filters.score === score ? "selected" : ""}>${score}</option>`).join("")}
         </select>
       </div>
-      <div class="field">
-        <label for="filter-cohort">Cohort</label>
-        <select id="filter-cohort" class="select" data-filter="cohort">
-          ${cohorts.map((cohort) => `<option ${filters.cohort === cohort ? "selected" : ""}>${escapeHtml(cohort)}</option>`).join("")}
-        </select>
-      </div>
-      <div class="field">
-        <label for="filter-sort">Sort responses</label>
-        <select id="filter-sort" class="select" data-filter="responseSort">
-          ${["Most recent", "Oldest"].map((sort) => `<option ${filters.responseSort === sort ? "selected" : ""}>${sort}</option>`).join("")}
-        </select>
-      </div>
     </div>
   `;
 }
@@ -1463,7 +1511,6 @@ function filteredAdminRows() {
       if (search && !`${row.person.name} ${row.person.email}`.toLowerCase().includes(search)) return false;
       if (filters.quiz !== "All" && row.itemQuiz.id !== filters.quiz) return false;
       if (filters.status !== "All" && row.status !== filters.status && row.latest?.status !== filters.status) return false;
-      if (filters.cohort !== "All" && row.person.cohort !== filters.cohort) return false;
       if (filters.score !== "All") {
         if (!row.latest || row.latest.score === null) return filters.score === "Pending";
         if (filters.score === "90-100" && row.latest.score < 90) return false;
@@ -1472,10 +1519,7 @@ function filteredAdminRows() {
       }
       return true;
     })
-    .sort((a, b) => {
-      const direction = filters.responseSort === "Oldest" ? 1 : -1;
-      return (responseSortValue(a) - responseSortValue(b)) * direction;
-    });
+    .sort((a, b) => attemptSortValue(b) - attemptSortValue(a));
 }
 
 function renderAdminTable(rows) {
@@ -1614,17 +1658,19 @@ function renderEditor() {
   const itemQuiz = quiz(selectedQuizId) || state.quizzes[0];
   const contentItems = quizContentItems(itemQuiz);
   const assignedCount = assignmentCountForQuiz(itemQuiz.id);
+  const modeLabel = editorReadOnly ? "Viewing" : "Editing";
   return `
     <section class="content">
       <div class="toolbar">
-        <div>
-          <h1 class="section-title">Editing: ${escapeHtml(itemQuiz.title)}</h1>
-          <div class="section-kicker">One project sandbox: ${escapeHtml(PROJECT_NAME)}. Drag course pages and questions into the order contributors should see them.</div>
+        <div class="editor-heading">
+          <button class="back-arrow-button" data-action="editor-home" aria-label="Back to all quizzes" title="Back to all quizzes">←</button>
+          <h1 class="section-title">${modeLabel}: ${escapeHtml(itemQuiz.title)}</h1>
+          <div class="section-kicker">${editorReadOnly ? "Review assessment content before editing." : `One project sandbox: ${escapeHtml(PROJECT_NAME)}. Drag course pages and questions into the order contributors should see them.`}</div>
         </div>
-        <div class="row-actions">
-          <button class="button secondary" data-action="editor-home">All quizzes</button>
-          <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview as contributor</button>
-          <button class="button" data-action="publish-quiz" data-quiz-id="${itemQuiz.id}" ${itemQuiz.draftDirty ? "" : "disabled"}>${itemQuiz.draftDirty ? "Publish content" : "Content published"}</button>
+        <div class="editor-detail-actions">
+          <button class="button secondary" data-action="enter-edit-mode" data-quiz-id="${itemQuiz.id}" ${editorReadOnly ? "" : "disabled"}>Edit</button>
+          <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview</button>
+          <button class="button" data-action="publish-quiz" data-quiz-id="${itemQuiz.id}" ${itemQuiz.draftDirty ? "" : "disabled"}>Publish content</button>
         </div>
       </div>
       <div class="editor-grid">
@@ -1661,11 +1707,7 @@ function renderEditor() {
           <div class="panel-header">
             <div>
               <h2 class="section-title small">Assessment builder</h2>
-              <div class="section-kicker">Drag blocks to reorder. Edit text, question type, answers, correct answers, weights, and hints inline.</div>
-            </div>
-            <div class="row-actions">
-              <button class="button secondary" data-action="add-course-page" data-quiz-id="${itemQuiz.id}">Add course page at end</button>
-              <button class="button" data-action="add-question" data-quiz-id="${itemQuiz.id}">Add question at end</button>
+              <div class="section-kicker">${editorReadOnly ? "Read-only view. Click Edit to change ordering, content, answers, weights, and hints." : "Drag blocks to reorder. Edit text, question type, answers, correct answers, weights, and hints inline."}</div>
             </div>
           </div>
           <div class="panel-body">
@@ -1720,7 +1762,7 @@ function renderEditorHome() {
                   ${itemQuiz.draftDirty ? `<div class="library-warning">Not visible on dashboards until published.</div>` : ""}
                 </div>
                 <div class="quiz-card-actions editor-card-actions">
-                  <button class="button" data-action="edit-quiz" data-quiz-id="${itemQuiz.id}">Edit quiz</button>
+                  <button class="button" data-action="view-quiz" data-quiz-id="${itemQuiz.id}">View quiz</button>
                   <div class="editor-card-secondary">
                     <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview</button>
                     <div class="card-menu">
@@ -1741,11 +1783,19 @@ function renderEditorHome() {
   `;
 }
 
+function editorReadonlyAttr() {
+  return editorReadOnly ? "readonly" : "";
+}
+
+function editorDisabledAttr() {
+  return editorReadOnly ? "disabled" : "";
+}
+
 function editorInput(label, field, value) {
   return `
     <div class="field">
       <label>${escapeHtml(label)}</label>
-      <input class="input" value="${escapeHtml(value)}" data-editor-field="${field}">
+      <input class="input" value="${escapeHtml(value)}" data-editor-field="${field}" ${editorReadonlyAttr()}>
     </div>
   `;
 }
@@ -1754,7 +1804,7 @@ function editorNumber(label, field, value, suffix) {
   return `
     <div class="field">
       <label>${escapeHtml(label)} (${escapeHtml(suffix)})</label>
-      <input class="input" type="number" min="0" value="${escapeHtml(value)}" data-editor-field="${field}">
+      <input class="input" type="number" min="0" value="${escapeHtml(value)}" data-editor-field="${field}" ${editorReadonlyAttr()}>
     </div>
   `;
 }
@@ -1766,13 +1816,14 @@ function editorToggle(label, field, enabled) {
         <div class="strong">${escapeHtml(label)}</div>
         <div class="cell-sub">${field === "projectActive" ? "Inactive projects stay visible but disabled." : "Used when each attempt starts."}</div>
       </div>
-      <button class="switch ${enabled ? "is-on" : ""}" data-action="toggle-editor" data-editor-field="${field}" aria-label="${escapeHtml(label)}"><span></span></button>
+      <button class="switch ${enabled ? "is-on" : ""}" data-action="toggle-editor" data-editor-field="${field}" aria-label="${escapeHtml(label)}" ${editorDisabledAttr()}><span></span></button>
     </div>
   `;
 }
 
 function renderAssignmentPanel(itemQuiz) {
   const canAssign = itemQuiz.status === "Published" && !itemQuiz.draftDirty;
+  const canManageAssignments = canAssign && !editorReadOnly;
   const assignedPeople = assignedContributorsForQuiz(itemQuiz.id);
   return `
     <div class="panel assignment-panel">
@@ -1784,21 +1835,21 @@ function renderAssignmentPanel(itemQuiz) {
       </div>
       <div class="panel-body">
         <div class="publish-note">
-          <div class="strong">${canAssign ? "Ready to assign" : "Publish content first"}</div>
-          <div class="cell-sub">${canAssign ? "Assigning makes the course appear under Required quizzes." : "Unpublished changes are not pushed to dashboards."}</div>
+          <div class="strong">${editorReadOnly ? "Viewing assignment settings" : canAssign ? "Ready to assign" : "Publish content first"}</div>
+          <div class="cell-sub">${editorReadOnly ? "Click Edit before changing dashboard assignment." : canAssign ? "Assigning makes the course appear under Required quizzes." : "Unpublished changes are not pushed to dashboards."}</div>
           <div class="cell-sub">Emails come from the signed-in contributor roster or from this allowlist for people who have not signed in yet.</div>
         </div>
         <div style="height: 12px;"></div>
-        <button class="button" data-action="assign-all" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Push to all contributors</button>
+        <button class="button" data-action="assign-all" data-quiz-id="${itemQuiz.id}" ${canManageAssignments ? "" : "disabled"}>Push to all contributors</button>
         <div style="height: 14px;"></div>
         <div class="field">
           <label>Assign only these emails</label>
-          <textarea class="textarea assignment-textarea" data-assign-email-list="${itemQuiz.id}" placeholder="Paste emails, separated by commas or new lines" ${canAssign ? "" : "disabled"}></textarea>
+          <textarea class="textarea assignment-textarea" data-assign-email-list="${itemQuiz.id}" placeholder="Paste emails, separated by commas or new lines" ${canManageAssignments ? "" : "disabled"}></textarea>
         </div>
         <div style="height: 12px;"></div>
         <div class="row-actions">
-          <button class="button secondary" data-action="assign-listed-emails" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Assign pasted emails</button>
-          <button class="button ghost" data-action="clear-assignments" data-quiz-id="${itemQuiz.id}" ${canAssign ? "" : "disabled"}>Clear assignments</button>
+          <button class="button secondary" data-action="assign-listed-emails" data-quiz-id="${itemQuiz.id}" ${canManageAssignments ? "" : "disabled"}>Assign pasted emails</button>
+          <button class="button ghost" data-action="clear-assignments" data-quiz-id="${itemQuiz.id}" ${canManageAssignments ? "" : "disabled"}>Clear assignments</button>
         </div>
         <div style="height: 14px;"></div>
         <div class="strong">Currently assigned</div>
@@ -1809,7 +1860,7 @@ function renderAssignmentPanel(itemQuiz) {
                 <span class="strong">${escapeHtml(person.name)}</span>
                 <span class="cell-sub">${escapeHtml(person.email)}</span>
               </span>
-              <button class="button small ghost" data-action="remove-assignment" data-quiz-id="${itemQuiz.id}" data-contributor-id="${person.id}">Remove</button>
+              <button class="button small ghost" data-action="remove-assignment" data-quiz-id="${itemQuiz.id}" data-contributor-id="${person.id}" ${canManageAssignments ? "" : "disabled"}>Remove</button>
             </div>
           `).join("") : `<div class="empty-state compact-empty">This quiz is not on any contributor dashboards yet.</div>`}
         </div>
@@ -1825,6 +1876,7 @@ function renderContentBlock(itemQuiz, entry, index, total) {
 }
 
 function renderInsertMenu(itemQuiz, key) {
+  if (editorReadOnly) return "";
   return `
     <div class="insert-menu">
       <button class="insert-button" type="button" aria-label="Add after this block">+</button>
@@ -1838,31 +1890,33 @@ function renderInsertMenu(itemQuiz, key) {
 
 function renderCourseEditorBlock(itemQuiz, page, key, position, index, total) {
   return `
-    <div class="builder-item draggable-item" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
+    <div class="builder-item draggable-item ${editorReadOnly ? "is-readonly" : ""}" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
       <div class="builder-top">
         <div>
-          <div class="builder-label"><span class="drag-handle" draggable="true" aria-label="Drag course page">::</span> Course page ${position.index} of ${position.total}</div>
+          <div class="builder-label">${editorReadOnly ? "" : `<span class="drag-handle" draggable="true" aria-label="Drag course page">::</span>`} Course page ${position.index} of ${position.total}</div>
           <h3 class="builder-title">${escapeHtml(page.title || "Untitled course page")}</h3>
         </div>
         <div class="row-actions">
           <span class="status not-started">Training</span>
           ${renderInsertMenu(itemQuiz, key)}
-          <button class="button small secondary" data-action="move-content" data-direction="up" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === 0 ? "disabled" : ""}>Move up</button>
-          <button class="button small secondary" data-action="move-content" data-direction="down" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === total - 1 ? "disabled" : ""}>Move down</button>
-          <button class="button small secondary" data-action="delete-course-page" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}">Delete</button>
+          ${editorReadOnly ? "" : `
+            <button class="button small secondary" data-action="move-content" data-direction="up" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === 0 ? "disabled" : ""}>Move up</button>
+            <button class="button small secondary" data-action="move-content" data-direction="down" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === total - 1 ? "disabled" : ""}>Move down</button>
+            <button class="button small secondary" data-action="delete-course-page" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}">Delete</button>
+          `}
         </div>
       </div>
       <div class="editor-form-grid">
         <div class="field">
           <label>Page title</label>
-          <input class="input" value="${escapeHtml(page.title)}" data-course-field="title" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}">
+          <input class="input" value="${escapeHtml(page.title)}" data-course-field="title" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}" ${editorReadonlyAttr()}>
         </div>
         <div class="field full-span">
           <label>Course content</label>
-          ${renderRichToolbar(itemQuiz.id, page.id)}
+          ${editorReadOnly ? "" : renderRichToolbar(itemQuiz.id, page.id)}
           <div
             class="rich-editor"
-            contenteditable="true"
+            contenteditable="${editorReadOnly ? "false" : "true"}"
             data-course-rich="${page.id}"
             data-quiz-id="${itemQuiz.id}"
             data-page-id="${page.id}"
@@ -1928,38 +1982,40 @@ function renderRichToolbar(quizId, pageId) {
 function renderQuestionEditorBlock(itemQuiz, question, key, position, index, total) {
   const answerEditor = renderAnswerEditor(itemQuiz, question);
   return `
-    <div class="builder-item draggable-item" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
+    <div class="builder-item draggable-item ${editorReadOnly ? "is-readonly" : ""}" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
       <div class="builder-top">
         <div>
-          <div class="builder-label"><span class="drag-handle" draggable="true" aria-label="Drag question">::</span> Question ${position.index} of ${position.total}</div>
+          <div class="builder-label">${editorReadOnly ? "" : `<span class="drag-handle" draggable="true" aria-label="Drag question">::</span>`} Question ${position.index} of ${position.total}</div>
           <h3 class="builder-title">${escapeHtml(question.prompt || "Untitled question")}</h3>
         </div>
         <div class="row-actions">
           <span class="status ${question.type === "Long text" ? "submitted" : "qualified"}">${question.type === "Long text" ? "Manual scoring" : "Auto scored"}</span>
           ${renderInsertMenu(itemQuiz, key)}
-          <button class="button small secondary" data-action="move-content" data-direction="up" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === 0 ? "disabled" : ""}>Move up</button>
-          <button class="button small secondary" data-action="move-content" data-direction="down" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === total - 1 ? "disabled" : ""}>Move down</button>
-          <button class="button small secondary" data-action="delete-question" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">Delete</button>
+          ${editorReadOnly ? "" : `
+            <button class="button small secondary" data-action="move-content" data-direction="up" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === 0 ? "disabled" : ""}>Move up</button>
+            <button class="button small secondary" data-action="move-content" data-direction="down" data-quiz-id="${itemQuiz.id}" data-content-key="${key}" ${index === total - 1 ? "disabled" : ""}>Move down</button>
+            <button class="button small secondary" data-action="delete-question" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">Delete</button>
+          `}
         </div>
       </div>
       <div class="editor-form-grid">
         <div class="field">
           <label>Question type</label>
-          <select class="select" data-question-field="type" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">
+          <select class="select" data-question-field="type" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" ${editorDisabledAttr()}>
             ${["Multiple choice", "Multi-select", "True/false", "Ranking", "Scenario review", "Long text"].map((type) => `<option ${question.type === type ? "selected" : ""}>${type}</option>`).join("")}
           </select>
         </div>
         <div class="field">
           <label>Weight</label>
-          <input class="input" type="number" min="1" value="${escapeHtml(question.weight)}" data-question-field="weight" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">
+          <input class="input" type="number" min="1" value="${escapeHtml(question.weight)}" data-question-field="weight" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" ${editorReadonlyAttr()}>
         </div>
         <div class="field full-span">
           <label>Question text</label>
-          <textarea class="textarea" data-question-field="prompt" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">${escapeHtml(question.prompt)}</textarea>
+          <textarea class="textarea" data-question-field="prompt" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" ${editorReadonlyAttr()}>${escapeHtml(question.prompt)}</textarea>
         </div>
         <div class="field full-span">
           <label>Hint shown during quiz</label>
-          <input class="input" value="${escapeHtml(question.hint || "")}" data-question-field="hint" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">
+          <input class="input" value="${escapeHtml(question.hint || "")}" data-question-field="hint" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" ${editorReadonlyAttr()}>
         </div>
       </div>
       ${renderQuestionResources(itemQuiz, question)}
@@ -1977,10 +2033,10 @@ function renderQuestionResources(itemQuiz, question) {
           <div class="strong">Question resource images</div>
           <div class="cell-sub">Contributors see these through a View images button while answering this question.</div>
         </div>
-        <label class="button small secondary upload-button">
+        ${editorReadOnly ? "" : `<label class="button small secondary upload-button">
           Upload image
           <input type="file" accept="image/*" multiple data-question-image-upload="${question.id}" data-quiz-id="${itemQuiz.id}">
-        </label>
+        </label>`}
       </div>
       ${resources.length ? `
         <div class="resource-grid">
@@ -1988,7 +2044,7 @@ function renderQuestionResources(itemQuiz, question) {
             <div class="resource-thumb">
               <img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.name)}">
               <div class="cell-sub">${escapeHtml(image.name)}</div>
-              <button class="button small ghost" data-action="remove-question-image" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-image-id="${image.id}">Remove</button>
+              ${editorReadOnly ? "" : `<button class="button small ghost" data-action="remove-question-image" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-image-id="${image.id}">Remove</button>`}
             </div>
           `).join("")}
         </div>
@@ -2009,7 +2065,7 @@ function renderAnswerEditor(itemQuiz, question) {
           <div class="strong">${question.type === "Ranking" ? "Ranking choices" : "Answers"}</div>
           <div class="cell-sub">${question.type === "Ranking" ? "The answer list order is treated as the correct ranking." : "Mark the correct answer text directly here."}</div>
         </div>
-        ${question.type === "True/false" ? "" : `<button class="button small secondary" data-action="add-answer" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">Add answer</button>`}
+        ${question.type === "True/false" || editorReadOnly ? "" : `<button class="button small secondary" data-action="add-answer" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}">Add answer</button>`}
       </div>
       <div class="answer-editor-list">
         ${question.answers.map((answer, index) => `
@@ -2022,17 +2078,17 @@ function renderAnswerEditor(itemQuiz, question) {
                 data-quiz-id="${itemQuiz.id}"
                 data-answer-id="${answer.id}"
                 ${answer.correct || (question.type === "Ranking" && question.correctOrder?.[index] === answer.id) ? "checked" : ""}
-                ${question.type === "Ranking" ? "disabled" : ""}
+                ${question.type === "Ranking" || editorReadOnly ? "disabled" : ""}
               >
               <span>${question.type === "Ranking" ? index + 1 : "Correct"}</span>
             </label>
-            <input class="input" value="${escapeHtml(answer.text)}" data-answer-field="text" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-answer-id="${answer.id}" ${question.type === "True/false" ? "readonly" : ""}>
+            <input class="input" value="${escapeHtml(answer.text)}" data-answer-field="text" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-answer-id="${answer.id}" ${question.type === "True/false" || editorReadOnly ? "readonly" : ""}>
             <div class="row-actions">
-              ${question.type === "Ranking" ? `
+              ${question.type === "Ranking" && !editorReadOnly ? `
                 <button class="button small secondary" data-action="move-answer" data-direction="up" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-answer-id="${answer.id}" ${index === 0 ? "disabled" : ""}>Up</button>
                 <button class="button small secondary" data-action="move-answer" data-direction="down" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-answer-id="${answer.id}" ${index === question.answers.length - 1 ? "disabled" : ""}>Down</button>
               ` : ""}
-              ${question.type === "True/false" ? "" : `<button class="button small ghost" data-action="delete-answer" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-answer-id="${answer.id}" ${question.answers.length <= 2 ? "disabled" : ""}>Remove</button>`}
+              ${question.type === "True/false" || editorReadOnly ? "" : `<button class="button small ghost" data-action="delete-answer" data-quiz-id="${itemQuiz.id}" data-question-id="${question.id}" data-answer-id="${answer.id}" ${question.answers.length <= 2 ? "disabled" : ""}>Remove</button>`}
             </div>
           </div>
         `).join("")}
@@ -2054,9 +2110,12 @@ function renderAnalytics() {
           <h1 class="section-title">Quiz analytics</h1>
           <div class="section-kicker">Deep dive by quiz, including miss rate and answer distribution.</div>
         </div>
-        <select class="select" data-action="select-editor-quiz">
-          ${state.quizzes.map((candidate) => `<option value="${candidate.id}" ${candidate.id === selectedQuizId ? "selected" : ""}>${escapeHtml(candidate.title)}</option>`).join("")}
-        </select>
+        <div class="row-actions">
+          <select class="select" data-action="select-editor-quiz">
+            ${state.quizzes.map((candidate) => `<option value="${candidate.id}" ${candidate.id === selectedQuizId ? "selected" : ""}>${escapeHtml(candidate.title)}</option>`).join("")}
+          </select>
+          <button class="button secondary" data-action="export-analytics-csv" data-quiz-id="${itemQuiz.id}">Export CSV</button>
+        </div>
       </div>
       <div class="analytics-grid">
         <div class="panel">
@@ -2149,6 +2208,7 @@ function questionStats(itemQuiz) {
     });
     return {
       question,
+      answered,
       distribution,
       missedCount,
       missRate: answered ? Math.round((missedCount / answered) * 100) : 0,
@@ -2159,7 +2219,7 @@ function questionStats(itemQuiz) {
 
 function startQuiz(quizId, preview = false) {
   imageViewer = null;
-  if (preview) previewReturn = { view, editorMode, selectedQuizId };
+  if (preview) previewReturn = { view, editorMode, editorReadOnly, selectedQuizId };
   const itemQuiz = quiz(quizId);
   const item = state.assignments.find((candidate) => candidate.contributorId === state.currentContributorId && candidate.quizId === quizId);
   if (!preview && (currentUser()?.offboarded || !item || ["Locked", "Project inactive", "Offboarded"].includes(assignmentStatus(item)))) return;
@@ -2637,6 +2697,52 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
+function exportAnalyticsCsv(quizId) {
+  const itemQuiz = quiz(quizId || selectedQuizId);
+  if (!itemQuiz) return;
+  const submitted = state.attempts.filter((attempt) => attempt.quizId === itemQuiz.id && ["Passed", "Failed", "Submitted"].includes(attempt.status));
+  const passRate = submitted.length ? Math.round((submitted.filter((attempt) => attempt.status === "Passed").length / submitted.length) * 100) : 0;
+  const header = [
+    "quiz",
+    "submitted_attempts",
+    "pass_rate_percent",
+    "question",
+    "question_type",
+    "weight",
+    "correct_answer",
+    "answered_count",
+    "missed_count",
+    "miss_rate_percent",
+    "average_time_seconds",
+    "answer_distribution"
+  ];
+  const lines = [
+    header.join(","),
+    ...questionStats(itemQuiz).map((stat) => [
+      itemQuiz.title,
+      submitted.length,
+      passRate,
+      stat.question.prompt,
+      stat.question.type,
+      stat.question.weight,
+      correctAnswerText(stat.question),
+      stat.answered,
+      stat.missedCount,
+      stat.missRate,
+      stat.averageTime,
+      Object.entries(stat.distribution).map(([label, count]) => `${label}: ${count}`).join(" | ")
+    ].map(csvCell).join(","))
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const safeTitle = itemQuiz.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "quiz";
+  anchor.href = url;
+  anchor.download = `project-otter-analytics-${safeTitle}.csv`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function csvCell(value) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
@@ -2694,6 +2800,7 @@ function createNewQuiz() {
   state.quizzes.unshift(newQuiz);
   selectedQuizId = id;
   editorMode = "detail";
+  editorReadOnly = false;
   addAudit("Quiz created", newQuiz.title);
   render();
 }
@@ -2776,6 +2883,7 @@ function duplicateQuiz(quizId) {
   state.quizzes.unshift(copy);
   selectedQuizId = id;
   editorMode = "detail";
+  editorReadOnly = false;
   addAudit("Quiz duplicated", `${source.title} -> ${copy.title}`);
   render();
 }
@@ -2799,6 +2907,7 @@ function deleteQuiz(quizId) {
   if (session?.quizId === quizId) session = null;
   addAudit("Quiz deleted", itemQuiz.title);
   editorMode = "home";
+  editorReadOnly = true;
   render();
 }
 
@@ -3141,6 +3250,25 @@ function handleClick(event) {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
+  const editorMutationActions = new Set([
+    "toggle-editor",
+    "move-content",
+    "insert-content",
+    "rich-command",
+    "remove-question-image",
+    "assign-all",
+    "assign-listed-emails",
+    "clear-assignments",
+    "remove-assignment",
+    "add-course-page",
+    "add-question",
+    "delete-course-page",
+    "delete-question",
+    "add-answer",
+    "delete-answer",
+    "move-answer"
+  ]);
+  if (editorReadOnly && view === "editor" && editorMode === "detail" && editorMutationActions.has(action)) return;
   if (action === "nav") {
     if (!isAdmin() && button.dataset.view !== "contributor") return;
     if (button.dataset.view !== view) {
@@ -3150,7 +3278,10 @@ function handleClick(event) {
       auditLogOpen = false;
     }
     view = button.dataset.view;
-    if (view === "editor") editorMode = "home";
+    if (view === "editor") {
+      editorMode = "home";
+      editorReadOnly = true;
+    }
     render();
   }
   if (action === "toggle-theme") {
@@ -3203,6 +3334,7 @@ function handleClick(event) {
     imageViewer = null;
     view = "editor";
     editorMode = previewReturn?.editorMode || "detail";
+    editorReadOnly = previewReturn?.editorReadOnly ?? editorReadOnly;
     selectedQuizId = previewReturn?.selectedQuizId || selectedQuizId;
     render();
   }
@@ -3261,6 +3393,12 @@ function handleClick(event) {
   if (action === "score-written-attempt") {
     scoreWrittenAttempt(button.dataset.attemptId);
   }
+  if (action === "ignore-written-review") {
+    ignoreWrittenReview(button.dataset.attemptId);
+  }
+  if (action === "restore-written-review") {
+    restoreWrittenReview(button.dataset.attemptId);
+  }
   if (action === "select-all") {
     selectedAssignments = new Set(filteredAdminRows().map((row) => row.item.id));
     if (!button.checked) selectedAssignments = new Set();
@@ -3285,13 +3423,22 @@ function handleClick(event) {
     render();
   }
   if (action === "export-csv") exportCsv();
+  if (action === "export-analytics-csv") exportAnalyticsCsv(button.dataset.quizId);
   if (action === "editor-home") {
     editorMode = "home";
+    editorReadOnly = true;
     render();
   }
-  if (action === "edit-quiz") {
+  if (action === "view-quiz" || action === "edit-quiz") {
     selectedQuizId = button.dataset.quizId;
     editorMode = "detail";
+    editorReadOnly = action !== "edit-quiz";
+    render();
+  }
+  if (action === "enter-edit-mode") {
+    selectedQuizId = button.dataset.quizId || selectedQuizId;
+    editorMode = "detail";
+    editorReadOnly = false;
     render();
   }
   if (action === "create-quiz") {
@@ -3413,6 +3560,15 @@ function handleInput(event) {
     filters[target.dataset.filter] = target.value;
     render();
   }
+  if (editorReadOnly && view === "editor" && editorMode === "detail" && (
+    target.dataset.editorField ||
+    target.dataset.courseField ||
+    target.dataset.courseRich ||
+    target.dataset.questionField ||
+    target.dataset.answerField ||
+    target.dataset.action === "rich-color" ||
+    target.dataset.action === "rich-highlight"
+  )) return;
   if (target.dataset.editorField) {
     const itemQuiz = quiz(selectedQuizId);
     const field = target.dataset.editorField;
@@ -3478,6 +3634,16 @@ function handleChange(event) {
     selectedQuizId = target.value;
     render();
   }
+  if (editorReadOnly && view === "editor" && editorMode === "detail" && (
+    target.dataset.questionField ||
+    target.dataset.courseImageUpload ||
+    target.dataset.questionImageUpload ||
+    target.dataset.answerCorrect ||
+    target.dataset.action === "rich-font" ||
+    target.dataset.action === "rich-size" ||
+    target.dataset.action === "rich-color" ||
+    target.dataset.action === "rich-highlight"
+  )) return;
   if (target.dataset.questionField === "type") {
     updateQuestionType(target.dataset.quizId, target.dataset.questionId, target.value);
   }
@@ -3525,6 +3691,7 @@ function handleChange(event) {
 }
 
 function handleDragStart(event) {
+  if (editorReadOnly) return;
   if (!event.target.closest(".drag-handle")) return;
   const item = event.target.closest("[data-content-key]");
   if (!item) return;
@@ -3534,6 +3701,7 @@ function handleDragStart(event) {
 }
 
 function handleDragOver(event) {
+  if (editorReadOnly) return;
   const item = event.target.closest("[data-content-key]");
   if (!item || !draggedContentKey || item.dataset.contentKey === draggedContentKey) return;
   event.preventDefault();
@@ -3546,6 +3714,7 @@ function handleDragLeave(event) {
 }
 
 function handleDrop(event) {
+  if (editorReadOnly) return;
   const item = event.target.closest("[data-content-key]");
   if (!item || !draggedContentKey) return;
   event.preventDefault();
@@ -3609,6 +3778,26 @@ function toggleLock(assignmentId) {
   render();
 }
 
+function ignoreWrittenReview(attemptId) {
+  const attempt = byId(state.attempts, attemptId);
+  if (!attempt || !(attempt.status === "Submitted" || attempt.manualReview)) return;
+  const itemQuiz = quiz(attempt.quizId);
+  const person = contributor(attempt.contributorId);
+  attempt.manualReviewIgnored = true;
+  addAudit("Written review ignored", `${person?.email || "Contributor"} - ${itemQuiz?.title || "Quiz"}`);
+  render();
+}
+
+function restoreWrittenReview(attemptId) {
+  const attempt = byId(state.attempts, attemptId);
+  if (!attempt || !(attempt.status === "Submitted" || attempt.manualReview)) return;
+  const itemQuiz = quiz(attempt.quizId);
+  const person = contributor(attempt.contributorId);
+  attempt.manualReviewIgnored = false;
+  addAudit("Written review restored", `${person?.email || "Contributor"} - ${itemQuiz?.title || "Quiz"}`);
+  render();
+}
+
 function scoreWrittenAttempt(attemptId) {
   const attempt = byId(state.attempts, attemptId);
   if (!attempt) return;
@@ -3623,6 +3812,7 @@ function scoreWrittenAttempt(attemptId) {
   attempt.score = Math.round(score);
   attempt.status = attempt.score >= itemQuiz.passThreshold ? "Passed" : "Failed";
   attempt.manualReview = false;
+  attempt.manualReviewIgnored = false;
   attempt.overridden = true;
   addAudit("Written response scored", `${person.email} - ${itemQuiz.title} - ${attempt.score}%`);
   render();

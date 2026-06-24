@@ -739,9 +739,46 @@ a {
   flex-wrap: wrap;
 }
 
+.editor-heading {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.back-arrow-button {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: var(--weight-semibold);
+}
+
+.back-arrow-button:hover {
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+}
+
+.editor-detail-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(148px, 1fr));
+  gap: 9px;
+  align-items: stretch;
+}
+
+.editor-detail-actions .button {
+  width: 100%;
+  min-height: 44px;
+}
+
 .filters {
   display: grid;
-  grid-template-columns: 1.4fr repeat(5, minmax(130px, 1fr));
+  grid-template-columns: 1.4fr repeat(3, minmax(130px, 1fr));
   gap: 10px;
   align-items: end;
 }
@@ -776,6 +813,20 @@ a {
 .input::placeholder,
 .textarea::placeholder {
   color: color-mix(in srgb, var(--muted) 78%, transparent);
+}
+
+.input[readonly],
+.textarea[readonly],
+.select:disabled,
+.rich-editor[contenteditable="false"] {
+  background: color-mix(in srgb, var(--surface-3) 74%, transparent);
+  color: var(--muted);
+  cursor: default;
+}
+
+.switch:disabled {
+  cursor: default;
+  opacity: 0.62;
 }
 
 .textarea {
@@ -1097,9 +1148,24 @@ tr:last-child td {
 .builder-list {
   display: grid;
   gap: 12px;
-  max-height: min(720px, calc(100vh - 260px));
-  overflow: auto;
-  padding-right: 4px;
+}
+
+.ignored-review-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.table-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.compact-table-wrap {
+  max-height: 360px;
 }
 
 .insert-menu {
@@ -2102,6 +2168,11 @@ td,
 
   .topbar-actions {
     justify-content: flex-start;
+  }
+
+  .editor-detail-actions {
+    grid-template-columns: 1fr;
+    width: 100%;
   }
 
   .top-nav {
