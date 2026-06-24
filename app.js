@@ -376,6 +376,7 @@ let adminSubView = "responses";
 let makeAdminOpen = false;
 let auditLogOpen = false;
 let selectedAssignments = new Set();
+let retakeDrafts = {};
 let draggedContentKey = null;
 let imageViewer = null;
 let previewReturn = null;
@@ -418,6 +419,7 @@ function resetState() {
   selectedHistoryAttemptId = null;
   adminSubView = "responses";
   makeAdminOpen = false;
+  retakeDrafts = {};
   selectedAssignments = new Set();
   session = null;
   resultSnapshot = null;
@@ -758,6 +760,30 @@ function remainingRetakes(item) {
 
 function retakeLabel(item) {
   return quiz(item.quizId)?.unlimitedRetakes ? "Unlimited" : String(remainingRetakes(item));
+}
+
+function retakeDraftValue(item) {
+  if (!item) return 0;
+  if (Object.prototype.hasOwnProperty.call(retakeDrafts, item.id)) return retakeDrafts[item.id];
+  return remainingRetakes(item);
+}
+
+function renderRetakeEditor(item) {
+  if (quiz(item.quizId)?.unlimitedRetakes) {
+    return `<div class="retake-static">Unlimited</div>`;
+  }
+  const savedValue = remainingRetakes(item);
+  const draftValue = retakeDraftValue(item);
+  const changed = draftValue !== savedValue;
+  return `
+    <div class="retake-editor ${changed ? "is-dirty" : ""}">
+      <button class="retake-step" data-action="retake-step" data-assignment-id="${item.id}" data-delta="-1" ${draftValue <= 0 ? "disabled" : ""} aria-label="Decrease retakes">-</button>
+      <span class="retake-count">${draftValue}</span>
+      <button class="retake-step" data-action="retake-step" data-assignment-id="${item.id}" data-delta="1" aria-label="Increase retakes">+</button>
+      ${changed ? `<button class="button small retake-save" data-action="save-retake-count" data-assignment-id="${item.id}">Save</button>` : ""}
+    </div>
+    ${changed ? `<div class="cell-sub retake-saved-value">Saved: ${savedValue}</div>` : ""}
+  `;
 }
 
 function assignmentStatus(item) {
@@ -1698,7 +1724,7 @@ function renderAdminTable(rows) {
               <td>${row.latest && row.latest.score !== null ? `${row.latest.score}%` : "Pending"}</td>
               <td>${row.latest ? formatSeconds(row.latest.activeSeconds) : "-"}</td>
               <td>${escapeHtml(responseDateLabel(row))}</td>
-              <td>${escapeHtml(retakeLabel(row.item))}</td>
+              <td>${renderRetakeEditor(row.item)}</td>
               <td>
                 <div class="row-actions">
                   <button class="button small secondary" data-action="view-attempt" data-attempt-id="${row.latest ? row.latest.id : ""}" ${row.latest ? "" : "disabled"}>View attempt</button>
@@ -1732,7 +1758,6 @@ function renderAttemptDetail() {
         <div class="modal-body">
           ${item ? `
             <div class="modal-actions top">
-              <button class="button secondary" data-action="allow-retake" data-assignment-id="${item.id}">Allow retake</button>
               <button class="button secondary" data-action="toggle-lock" data-assignment-id="${item.id}">${item.locked ? "Unlock" : "Lock"}</button>
               <button class="button secondary" data-action="change-result" data-assignment-id="${item.id}" ${attempt.status === "In progress" ? "disabled" : ""}>Change result</button>
             </div>
@@ -3567,8 +3592,11 @@ function handleClick(event) {
   if (action === "make-admin-by-email") {
     makeAdminByEmail();
   }
-  if (action === "allow-retake") {
-    allowRetake(button.dataset.assignmentId);
+  if (action === "retake-step") {
+    adjustRetakeDraft(button.dataset.assignmentId, Number(button.dataset.delta || 0));
+  }
+  if (action === "save-retake-count") {
+    saveRetakeCount(button.dataset.assignmentId);
   }
   if (action === "toggle-lock") {
     toggleLock(button.dataset.assignmentId);
@@ -3972,11 +4000,26 @@ function allowRetakeNoRender(assignmentId) {
   item.locked = false;
 }
 
-function allowRetake(assignmentId) {
+function adjustRetakeDraft(assignmentId, delta) {
   const item = assignment(assignmentId);
   if (!item) return;
-  allowRetakeNoRender(assignmentId);
-  addAudit("Retake enabled", `${contributor(item.contributorId).email} - ${quiz(item.quizId).title}`);
+  if (quiz(item.quizId)?.unlimitedRetakes) return;
+  const savedValue = remainingRetakes(item);
+  const nextValue = Math.max(0, retakeDraftValue(item) + delta);
+  if (nextValue === savedValue) delete retakeDrafts[item.id];
+  else retakeDrafts[item.id] = nextValue;
+  render();
+}
+
+function saveRetakeCount(assignmentId) {
+  const item = assignment(assignmentId);
+  if (!item || !Object.prototype.hasOwnProperty.call(retakeDrafts, item.id)) return;
+  const savedValue = remainingRetakes(item);
+  const nextValue = Math.max(0, Number(retakeDrafts[item.id] || 0));
+  item.retakesAllowed = Number(item.retakesUsed || 0) + nextValue;
+  if (nextValue > 0) item.locked = false;
+  delete retakeDrafts[item.id];
+  addAudit("Retakes updated", `${contributor(item.contributorId).email} - ${quiz(item.quizId).title}: ${savedValue} to ${nextValue}`);
   render();
 }
 

@@ -902,6 +902,70 @@ tr:last-child td {
   flex-wrap: wrap;
 }
 
+.retake-editor {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+
+.retake-editor.is-dirty {
+  border-color: color-mix(in srgb, var(--blue) 42%, transparent);
+  background: color-mix(in srgb, var(--blue-soft) 58%, transparent);
+}
+
+.retake-step {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.retake-step:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: var(--blue-strong);
+}
+
+.retake-step:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.retake-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+  font-size: 14px;
+}
+
+.retake-save {
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+
+.retake-static {
+  color: var(--muted);
+  font-weight: var(--weight-semibold);
+}
+
+.retake-saved-value {
+  margin-top: 4px;
+}
+
 .subtabs {
   display: inline-flex;
   align-items: center;
