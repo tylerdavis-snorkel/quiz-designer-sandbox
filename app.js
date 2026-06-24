@@ -378,6 +378,7 @@ let bulkRetakeOpen = false;
 let auditLogOpen = false;
 let selectedAssignments = new Set();
 let retakeDrafts = {};
+let publishNoteQuizId = null;
 let draggedContentKey = null;
 let imageViewer = null;
 let previewReturn = null;
@@ -421,6 +422,7 @@ function resetState() {
   adminSubView = "responses";
   makeAdminOpen = false;
   bulkRetakeOpen = false;
+  publishNoteQuizId = null;
   retakeDrafts = {};
   selectedAssignments = new Set();
   session = null;
@@ -685,7 +687,7 @@ function versionsForQuiz(quizId) {
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
-function createQuizVersion(quizId, note = "Saved quiz content") {
+function createQuizVersion(quizId, note = "Saved quiz content", kind = "saved") {
   const itemQuiz = quiz(quizId);
   if (!itemQuiz) return null;
   state.quizVersions = state.quizVersions || [];
@@ -694,7 +696,7 @@ function createQuizVersion(quizId, note = "Saved quiz content") {
   const version = {
     id: uniqueId("ver"),
     quizId,
-    title: note === "Published content" ? `Published version ${publishedCount + 1}` : `Version ${savedVersions.length + 1}`,
+    title: kind === "published" ? `Published version ${publishedCount + 1}` : `Version ${savedVersions.length + 1}`,
     createdAt: new Date().toISOString(),
     actor: currentUser()?.name || "Admin",
     note,
@@ -882,6 +884,52 @@ function addOffboardingLog(action, person) {
   });
 }
 
+function isAdminAccessAudit(event) {
+  return String(event?.action || "").toLowerCase().includes("admin access");
+}
+
+function isOffboardingAudit(event) {
+  const value = `${event?.action || ""} ${event?.target || ""}`.toLowerCase();
+  return value.includes("offboard") || value.includes("restored");
+}
+
+function isQuizContentAudit(event) {
+  const value = String(event?.action || "").toLowerCase();
+  return value.includes("quiz created")
+    || value.includes("quiz duplicated")
+    || value.includes("quiz deleted")
+    || value.includes("assessment content")
+    || value.includes("quiz version")
+    || value.includes("quiz changes")
+    || value.includes("quiz setting")
+    || value.includes("assessment order")
+    || value.includes("course page")
+    || value.includes("question")
+    || value.includes("image uploaded")
+    || value.includes("image removed")
+    || value.includes("assigned by email")
+    || value.includes("pushed to all dashboards")
+    || value.includes("removed from dashboards")
+    || value.includes("assignment removed");
+}
+
+function contributorQuizAuditEvents() {
+  return (state.audit || []).filter((event) => !isAdminAccessAudit(event) && !isOffboardingAudit(event) && !isQuizContentAudit(event));
+}
+
+function adminAccessAuditEvents() {
+  return (state.audit || []).filter(isAdminAccessAudit);
+}
+
+function quizAuditEvents(itemQuiz) {
+  if (!itemQuiz) return [];
+  const title = String(itemQuiz.title || "").toLowerCase();
+  return (state.audit || []).filter((event) => {
+    const target = String(event.target || "").toLowerCase();
+    return isQuizContentAudit(event) && target.includes(title);
+  });
+}
+
 function render() {
   stopTimer();
   document.body.dataset.theme = state.theme;
@@ -948,7 +996,7 @@ function renderShell(content) {
                 </option>
               `).join("")}
             </select>
-            ${isAdmin(current) ? `<button class="button secondary" data-action="open-make-admin">Make admin</button>` : ""}
+            ${isAdmin(current) ? `<button class="button secondary" data-action="open-make-admin">Admin access</button>` : ""}
             <button class="button secondary" data-action="toggle-theme">${state.theme === "dark" ? "Light mode" : "Dark mode"}</button>
             <button class="button ghost" data-action="reset-sandbox">Reset sandbox</button>
           </div>
@@ -963,7 +1011,7 @@ function renderShell(content) {
           ` : ""}
         </nav>
         ${content}
-        ${makeAdminOpen ? renderMakeAdminModal() : ""}
+        ${makeAdminOpen ? renderAdminAccessModal() : ""}
       </main>
     </div>
   `;
@@ -1173,7 +1221,11 @@ function renderAdmin() {
   return `
     <section class="content admin-content">
       <div class="admin-dashboard-grid">
-        ${renderAuditLogCard()}
+        ${renderAuditLogCard({
+          title: "Contributor quiz log",
+          kicker: "Retakes, locks, scoring, notes, review actions, and attempt changes.",
+          events: contributorQuizAuditEvents()
+        })}
         <div class="admin-main">
           <div class="metrics-toolbar">
             <div>
@@ -1236,24 +1288,23 @@ function renderAdmin() {
   `;
 }
 
-function renderAuditLogCard() {
-  const events = state.audit || [];
+function renderAuditLogCard({ title = "Audit log", kicker = "Recent activity across the current view.", events = state.audit || [], showViewAll = true } = {}) {
   return `
     <aside class="panel audit-card">
       <div class="audit-card-header">
         <div class="audit-card-icon">${auditIconSvg("log")}</div>
         <div>
-          <h2 class="section-title small">Audit log</h2>
-          <div class="section-kicker">Resets, threshold edits, locks, offboarding, overrides, and content changes.</div>
+          <h2 class="section-title small">${escapeHtml(title)}</h2>
+          <div class="section-kicker">${escapeHtml(kicker)}</div>
         </div>
       </div>
       <div class="audit-timeline">
         ${events.length ? events.slice(0, 7).map(renderAuditTimelineItem).join("") : `<div class="empty-state compact-empty">No audit events yet.</div>`}
       </div>
-      <button class="button secondary audit-view-all" data-action="open-audit-log">
+      ${showViewAll ? `<button class="button secondary audit-view-all" data-action="open-audit-log">
         View full audit log
         <span aria-hidden="true">&rsaquo;</span>
-      </button>
+      </button>` : ""}
     </aside>
   `;
 }
@@ -1273,14 +1324,14 @@ function renderAuditTimelineItem(event) {
 }
 
 function renderAuditLogModal() {
-  const events = state.audit || [];
+  const events = contributorQuizAuditEvents();
   return `
     <div class="modal-backdrop" data-modal-backdrop="audit-log">
       <div class="modal-card audit-modal" role="dialog" aria-modal="true" aria-labelledby="audit-log-title">
         <div class="modal-header">
           <div>
-            <h2 id="audit-log-title" class="section-title small">Full audit log</h2>
-            <div class="section-kicker">Complete sandbox history for admin actions and assessment changes.</div>
+            <h2 id="audit-log-title" class="section-title small">Contributor quiz log</h2>
+            <div class="section-kicker">Complete contributor-quiz activity for this dashboard.</div>
           </div>
           <button class="button ghost" data-action="close-audit-log">Close</button>
         </div>
@@ -1412,6 +1463,23 @@ function renderOffboardingPanel() {
         </div>
         <div style="height: 14px;"></div>
         <div class="offboarding-grid">
+          <aside class="panel audit-card offboarding-log-card">
+            <div class="audit-card-header">
+              <div class="audit-card-icon">${auditIconSvg("shield")}</div>
+              <div>
+                <h2 class="section-title small">Offboarding log</h2>
+                <div class="section-kicker">Tracks both offboarding and restored access.</div>
+              </div>
+            </div>
+            <div class="audit-list">
+              ${(state.offboardingLog || []).length ? state.offboardingLog.slice(0, 8).map((event) => `
+                <div class="audit-item">
+                  <div class="strong">${escapeHtml(event.action)} - ${escapeHtml(event.name || event.email)}</div>
+                  <div class="cell-sub">${escapeHtml(event.email)} - ${escapeHtml(event.actor)} - ${escapeHtml(event.at)}</div>
+                </div>
+              `).join("") : `<div class="empty-state">No offboarding changes yet.</div>`}
+            </div>
+          </aside>
           <div class="table-wrap">
             <table>
               <thead>
@@ -1448,19 +1516,6 @@ function renderOffboardingPanel() {
                 }).join("")}
               </tbody>
             </table>
-          </div>
-          <div>
-            <div class="strong">Offboarding log</div>
-            <div class="section-kicker">Tracks both offboarding and restored access.</div>
-            <div style="height: 10px;"></div>
-            <div class="audit-list">
-              ${(state.offboardingLog || []).length ? state.offboardingLog.slice(0, 8).map((event) => `
-                <div class="audit-item">
-                  <div class="strong">${escapeHtml(event.action)} - ${escapeHtml(event.name || event.email)}</div>
-                  <div class="cell-sub">${escapeHtml(event.email)} - ${escapeHtml(event.actor)} - ${escapeHtml(event.at)}</div>
-                </div>
-              `).join("") : `<div class="empty-state">No offboarding changes yet.</div>`}
-            </div>
           </div>
         </div>
       </div>
@@ -1606,14 +1661,17 @@ function renderWrittenScoringPanel() {
   `;
 }
 
-function renderMakeAdminModal() {
+function renderAdminAccessModal() {
+  const admins = state.contributors.filter((person) => isAdmin(person));
+  const canRemoveAdmins = admins.length > 1;
+  const accessEvents = adminAccessAuditEvents();
   return `
     <div class="modal-backdrop" data-modal-backdrop="make-admin">
-      <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="make-admin-title">
+      <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="admin-access-title">
         <div class="modal-header">
         <div>
-            <h2 id="make-admin-title" class="section-title small">Make admin</h2>
-            <div class="section-kicker">Type the account email that should receive admin access.</div>
+            <h2 id="admin-access-title" class="section-title small">Admin access</h2>
+            <div class="section-kicker">Add or remove admin permissions for this assessment dashboard.</div>
         </div>
           <button class="button ghost" data-action="close-make-admin">Close</button>
       </div>
@@ -1622,11 +1680,47 @@ function renderMakeAdminModal() {
             <label for="make-admin-email">Email</label>
             <input id="make-admin-email" class="input" data-make-admin-email placeholder="name@example.com" autocomplete="off">
           </div>
+          <div class="modal-inline-actions">
+            <button class="button" data-action="make-admin-by-email">Add admin</button>
+          </div>
           <div class="helper-text">In this sandbox, the email can match an existing sample account or create a new invited admin account.</div>
+          <div class="admin-access-section">
+            <div class="table-section-heading">
+              <div>
+                <div class="strong">Current admins</div>
+                <div class="cell-sub">${admins.length} admin${admins.length === 1 ? "" : "s"} have access.</div>
+              </div>
+            </div>
+            <div class="admin-access-list">
+              ${admins.map((person) => {
+                const isCurrent = person.id === state.currentContributorId;
+                const canRemove = canRemoveAdmins && !isCurrent;
+                return `
+                  <div class="admin-access-row">
+                    <div>
+                      <div class="cell-title">${escapeHtml(person.name)}</div>
+                      <div class="cell-sub">${escapeHtml(person.email)}${isCurrent ? " - Current admin" : ""}</div>
+                    </div>
+                    <button class="button small danger-ghost" data-action="remove-admin" data-contributor-id="${person.id}" ${canRemove ? "" : "disabled"}>Remove admin</button>
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          </div>
+          <div class="admin-access-section">
+            <div class="table-section-heading">
+              <div>
+                <div class="strong">Admin access log</div>
+                <div class="cell-sub">Tracks admin permissions granted or removed.</div>
+              </div>
+            </div>
+            <div class="audit-list compact-audit-list">
+              ${accessEvents.length ? accessEvents.slice(0, 8).map(renderAuditTimelineItem).join("") : `<div class="empty-state compact-empty">No admin access changes yet.</div>`}
+            </div>
+          </div>
         </div>
         <div class="modal-actions">
-          <button class="button secondary" data-action="close-make-admin">Cancel</button>
-          <button class="button" data-action="make-admin-by-email">Make admin</button>
+          <button class="button secondary" data-action="close-make-admin">Done</button>
         </div>
       </div>
     </div>
@@ -1927,6 +2021,7 @@ function renderEditor() {
               ${editorToggle("Randomize answer choices", "randomizeAnswers", itemQuiz.randomizeAnswers)}
             </div>
           </div>
+          ${renderQuizActionLogPanel(itemQuiz)}
           ${renderAssignmentPanel(itemQuiz)}
         </div>
         <div class="panel builder-panel">
@@ -1946,8 +2041,19 @@ function renderEditor() {
         </div>
       </div>
       ${versionHistoryQuizId === itemQuiz.id ? renderVersionHistoryModal(itemQuiz) : ""}
+      ${publishNoteQuizId === itemQuiz.id ? renderPublishNoteModal(itemQuiz) : ""}
     </section>
   `;
+}
+
+function renderQuizActionLogPanel(itemQuiz) {
+  const events = quizAuditEvents(itemQuiz);
+  return renderAuditLogCard({
+    title: "Quiz action log",
+    kicker: "Content, publishing, assignment, image, and version activity for this quiz.",
+    events,
+    showViewAll: false
+  });
 }
 
 function renderVersionHistoryModal(itemQuiz) {
@@ -1976,6 +2082,33 @@ function renderVersionHistoryModal(itemQuiz) {
               </div>
             `).join("") : `<div class="empty-state">No saved versions yet. Publishing creates a version snapshot.</div>`}
           </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPublishNoteModal(itemQuiz) {
+  return `
+    <div class="modal-backdrop" data-modal-backdrop="publish-note">
+      <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="publish-note-title">
+        <div class="modal-header">
+          <div>
+            <h2 id="publish-note-title" class="section-title small">Publish changes</h2>
+            <div class="section-kicker">${escapeHtml(itemQuiz.title)}. Describe what changed for version history.</div>
+          </div>
+          <button class="button ghost" data-action="close-publish-note">Close</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label for="publish-change-note">What changed?</label>
+            <textarea id="publish-change-note" class="textarea" data-publish-change-note placeholder="Example: Updated rubric wording, added one scenario question, and changed pass threshold to 82%."></textarea>
+          </div>
+          <div class="helper-text">This note will appear on the new published version in Version history.</div>
+        </div>
+        <div class="modal-actions">
+          <button class="button secondary" data-action="close-publish-note">Cancel</button>
+          <button class="button" data-action="confirm-publish-quiz" data-quiz-id="${itemQuiz.id}">Publish content</button>
         </div>
       </div>
     </div>
@@ -3315,6 +3448,23 @@ function applyBulkRetake() {
   render();
 }
 
+function publishQuizWithNote(quizId) {
+  const itemQuiz = quiz(quizId);
+  if (!itemQuiz || !itemQuiz.draftDirty) return;
+  if (!itemQuiz.guidelinesUrl.trim()) {
+    alert("Add the Google Docs guidelines link before publishing.");
+    return;
+  }
+  const noteInput = document.querySelector("[data-publish-change-note]");
+  const note = noteInput?.value.trim() || "Published content";
+  itemQuiz.status = "Published";
+  itemQuiz.draftDirty = false;
+  createQuizVersion(itemQuiz.id, note, "published");
+  captureEditorSnapshot(itemQuiz.id);
+  publishNoteQuizId = null;
+  addAudit("Assessment content published", `${itemQuiz.title} - ${note}`);
+}
+
 function emailListForQuiz(quizId) {
   const input = document.querySelector(`[data-assign-email-list="${quizId}"]`);
   return parseEmailList(input?.value || "");
@@ -3348,6 +3498,9 @@ function setContributorRole(contributorId, role) {
   const person = contributor(contributorId);
   if (!person || !isAdmin()) return;
   if (person.id === state.currentContributorId && role !== "admin") return;
+  const adminCount = state.contributors.filter((candidate) => isAdmin(candidate)).length;
+  if (role !== "admin" && adminCount <= 1) return;
+  if (person.role === role) return;
   person.role = role;
   addAudit(role === "admin" ? "Admin access granted" : "Admin access removed", person.email);
   if (!isAdmin(currentUser())) view = "contributor";
@@ -3571,6 +3724,11 @@ function handleClick(event) {
     render();
     return;
   }
+  if (event.target.dataset.modalBackdrop === "publish-note") {
+    publishNoteQuizId = null;
+    render();
+    return;
+  }
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
@@ -3602,6 +3760,7 @@ function handleClick(event) {
       bulkRetakeOpen = false;
       auditLogOpen = false;
       versionHistoryQuizId = null;
+      publishNoteQuizId = null;
     }
     view = button.dataset.view;
     if (view === "editor") {
@@ -3706,6 +3865,9 @@ function handleClick(event) {
   if (action === "make-admin-by-email") {
     makeAdminByEmail();
   }
+  if (action === "remove-admin") {
+    setContributorRole(button.dataset.contributorId, "contributor");
+  }
   if (action === "open-bulk-retake") {
     bulkRetakeOpen = true;
     makeAdminOpen = false;
@@ -3775,6 +3937,7 @@ function handleClick(event) {
     editorReadOnly = true;
     editorSnapshot = null;
     versionHistoryQuizId = null;
+    publishNoteQuizId = null;
     render();
   }
   if (action === "view-quiz" || action === "edit-quiz") {
@@ -3871,11 +4034,15 @@ function handleClick(event) {
       alert("Add the Google Docs guidelines link before publishing.");
       return;
     }
-    itemQuiz.status = "Published";
-    itemQuiz.draftDirty = false;
-    createQuizVersion(itemQuiz.id, "Published content");
-    captureEditorSnapshot(itemQuiz.id);
-    addAudit("Assessment content published", `${itemQuiz.title} - assign it to push to dashboards`);
+    publishNoteQuizId = itemQuiz.id;
+    render();
+  }
+  if (action === "close-publish-note") {
+    publishNoteQuizId = null;
+    render();
+  }
+  if (action === "confirm-publish-quiz") {
+    publishQuizWithNote(button.dataset.quizId);
     render();
   }
   if (action === "add-course-page") {
@@ -3914,8 +4081,9 @@ function handleClick(event) {
     const attempt = byId(state.attempts, button.dataset.attemptId);
     const note = document.querySelector(`[data-action="attempt-note"][data-attempt-id="${button.dataset.attemptId}"]`);
     if (attempt && note) {
+      const itemQuiz = quiz(attempt.quizId);
       attempt.note = note.value;
-      addAudit("Internal note saved", `${contributor(attempt.contributorId).email} attempt`);
+      addAudit("Internal note saved", `${contributor(attempt.contributorId).email} - ${itemQuiz?.title || "Quiz"} attempt`);
       render();
     }
   }

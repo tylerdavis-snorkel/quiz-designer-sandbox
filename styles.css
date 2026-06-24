@@ -1092,7 +1092,7 @@ tr:last-child td {
 
 .offboarding-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  grid-template-columns: minmax(260px, 0.45fr) minmax(0, 1.55fr);
   gap: 16px;
   align-items: start;
 }
@@ -1173,10 +1173,38 @@ tr:last-child td {
   justify-content: flex-start;
 }
 
+.modal-inline-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
 .helper-text {
   color: var(--muted);
   font-size: 12px;
   margin-top: 8px;
+}
+
+.admin-access-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.admin-access-list {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-access-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-2) 62%, transparent);
 }
 
 .split {
@@ -1196,6 +1224,11 @@ tr:last-child td {
   display: grid;
   gap: 18px;
   align-content: start;
+}
+
+.editor-side .audit-card,
+.offboarding-log-card {
+  position: static;
 }
 
 .builder-panel {
@@ -2071,6 +2104,14 @@ tr:last-child td {
   max-height: min(520px, 58vh);
   overflow: auto;
   padding-right: 4px;
+}
+
+.compact-audit-list {
+  max-height: 260px;
+}
+
+.compact-audit-list .audit-timeline-item {
+  padding-bottom: 12px;
 }
 
 .version-list {
