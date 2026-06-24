@@ -1,10 +1,12 @@
 const STORAGE_KEY = "projectOtterAssessmentState.v3";
+const VISUAL_VERSION = 2;
 const PROJECT_NAME = "Project Otter";
 
 const app = document.querySelector("#app");
 
 const initialState = () => ({
-  theme: "light",
+  theme: "dark",
+  visualVersion: VISUAL_VERSION,
   projectName: PROJECT_NAME,
   currentContributorId: "c-alex",
   selectedQuizId: "q-otter",
@@ -366,6 +368,7 @@ let selectedAttemptId = null;
 let selectedHistoryAttemptId = null;
 let adminSubView = "responses";
 let makeAdminOpen = false;
+let auditLogOpen = false;
 let selectedAssignments = new Set();
 let draggedContentKey = null;
 let imageViewer = null;
@@ -419,6 +422,10 @@ function resetState() {
 function normalizeState(candidate) {
   const next = candidate || initialState();
   next.projectName = PROJECT_NAME;
+  if (next.visualVersion !== VISUAL_VERSION) {
+    next.theme = "dark";
+    next.visualVersion = VISUAL_VERSION;
+  }
   next.quizzes = (next.quizzes || []).map(normalizeQuiz);
   next.contributors = (next.contributors || []).map(normalizeContributor);
   next.offboardingLog = Array.isArray(next.offboardingLog) ? next.offboardingLog : [];
@@ -736,37 +743,27 @@ function renderShell(content) {
     contributor: "Contributor dashboard",
     admin: "Admin dashboard",
     offboarding: "Offboarding",
-    editor: "Quiz editor",
+    editor: editorMode === "home" ? "Quiz library" : "Quiz editor",
     analytics: "Quiz analytics"
+  }[view];
+  const subtitle = {
+    contributor: "Complete required assessments and review your history.",
+    admin: "Manage contributor qualifications and review quality.",
+    offboarding: "Manage access while preserving read-only history.",
+    editor: editorMode === "home" ? "Create, manage, publish, and assign qualification quizzes." : "Build course pages, questions, scoring, and assignments.",
+    analytics: "Review question performance and score patterns."
   }[view];
   return `
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">
-          <div>
-            <div class="brand-title">Project Otter</div>
-            <div class="brand-subtitle">Assessment dashboard</div>
-          </div>
-        </div>
-        <nav class="nav" aria-label="Main">
-          ${navButton("contributor", "Contributor")}
-          ${isAdmin(current) ? `
-            ${navButton("admin", "Admin")}
-            ${navButton("offboarding", "Offboarding")}
-            ${navButton("editor", "Quiz editor")}
-            ${navButton("analytics", "Analytics")}
-          ` : ""}
-        </nav>
-        <div class="sandbox-box">
-          <strong>Sandbox</strong><br>
-          ${isAdmin(current) ? "Admin account: use Make admin to promote accounts by email." : "Contributor account: only the Contributor tab is visible. Switch to Maya to test admin tools."}
-        </div>
-      </aside>
       <main class="main">
         <header class="topbar">
-          <div>
-            <div class="topbar-title">${escapeHtml(title)}</div>
-            <div class="topbar-meta">${escapeHtml(current.name)} - ${escapeHtml(current.email)} - ${isAdmin(current) ? "Admin" : "Contributor"}</div>
+          <div class="topbar-heading">
+            <div class="brand-mark">${auditIconSvg("shield")}</div>
+            <div>
+              <div class="topbar-title">${escapeHtml(title)}</div>
+              <div class="topbar-subtitle">${escapeHtml(subtitle)}</div>
+              <div class="topbar-meta">${escapeHtml(current.name)} - ${escapeHtml(current.email)} - ${isAdmin(current) ? "Admin" : "Contributor"}</div>
+            </div>
           </div>
           <div class="topbar-actions">
             <select class="select" data-action="switch-contributor" aria-label="Current contributor">
@@ -780,6 +777,15 @@ function renderShell(content) {
             <button class="button ghost" data-action="reset-sandbox">Reset sandbox</button>
           </div>
         </header>
+        <nav class="top-nav" aria-label="Main">
+          ${navButton("contributor", "Contributor")}
+          ${isAdmin(current) ? `
+            ${navButton("admin", "Admin")}
+            ${navButton("offboarding", "Offboarding")}
+            ${navButton("editor", "Quiz library")}
+            ${navButton("analytics", "Analytics")}
+          ` : ""}
+        </nav>
         ${content}
       </main>
     </div>
@@ -988,91 +994,200 @@ function renderAdmin() {
   const stats = adminStats();
   const metricTitle = filters.metricQuiz === "All" ? "All quizzes" : quiz(filters.metricQuiz)?.title || "All quizzes";
   return `
-    <section class="content">
-      <div class="metrics-toolbar">
-        <div>
-          <h1 class="section-title">Metrics</h1>
-          <div class="section-kicker">${escapeHtml(metricTitle)}</div>
-        </div>
-        <div class="field metric-select">
-          <label for="metric-quiz">Quiz</label>
-          <select id="metric-quiz" class="select" data-filter="metricQuiz">
-            <option>All</option>
-            ${state.quizzes.map((itemQuiz) => `<option value="${itemQuiz.id}" ${filters.metricQuiz === itemQuiz.id ? "selected" : ""}>${escapeHtml(itemQuiz.title)}</option>`).join("")}
-          </select>
-        </div>
-      </div>
-      <div class="stat-grid">
-        <div class="stat">
-          <div class="stat-label">Passed</div>
-          <div class="stat-value">${stats.passed}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Failed</div>
-          <div class="stat-value">${stats.failed}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">In progress</div>
-          <div class="stat-value">${stats.inProgress}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Not started</div>
-          <div class="stat-value">${stats.notStarted}</div>
-        </div>
-      </div>
-      ${renderAdminSubTabs()}
-      ${adminSubView === "written" ? renderWrittenScoringPanel() : `
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <h1 class="section-title">Contributor controls</h1>
-            <div class="section-kicker">Contributor-first view with filters, CSV export, and attempt review.</div>
+    <section class="content admin-content">
+      <div class="admin-dashboard-grid">
+        ${renderAuditLogCard()}
+        <div class="admin-main">
+          <div class="metrics-toolbar">
+            <div>
+              <h1 class="section-title">Overview</h1>
+              <div class="section-kicker">${escapeHtml(metricTitle)}</div>
+            </div>
+            <div class="field metric-select">
+              <label for="metric-quiz">Quiz</label>
+              <select id="metric-quiz" class="select" data-filter="metricQuiz">
+                <option>All</option>
+                ${state.quizzes.map((itemQuiz) => `<option value="${itemQuiz.id}" ${filters.metricQuiz === itemQuiz.id ? "selected" : ""}>${escapeHtml(itemQuiz.title)}</option>`).join("")}
+              </select>
+            </div>
           </div>
-          <div class="row-actions">
-            <button class="button" data-action="export-csv">Export CSV</button>
-            <button class="button secondary" data-action="open-make-admin">Make admin</button>
+          <div class="stat-grid">
+            <div class="stat">
+              <div class="stat-label">Passed</div>
+              <div class="stat-value">${stats.passed}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Failed</div>
+              <div class="stat-value">${stats.failed}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">In progress</div>
+              <div class="stat-value">${stats.inProgress}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Not started</div>
+              <div class="stat-value">${stats.notStarted}</div>
+            </div>
           </div>
-        </div>
-        <div class="panel-body">
-          ${renderFilters()}
-          <div style="height: 14px;"></div>
-          ${renderAdminTable(rows)}
-        </div>
-      </div>
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <h2 class="section-title small">Audit log</h2>
-            <div class="section-kicker">Resets, threshold edits, locks, offboarding, overrides, and content changes.</div>
-          </div>
-        </div>
-        <div class="panel-body">
-          <div class="audit-list">
-            ${state.audit.slice(0, 8).map((event) => `
-              <div class="audit-item">
-                <div class="strong">${escapeHtml(event.action)}</div>
-                <div class="cell-sub">${escapeHtml(event.target)} - ${escapeHtml(event.actor)} - ${escapeHtml(event.at)}</div>
+          ${renderAdminSubTabs()}
+          ${adminSubView === "responses" ? renderAdminReviewCallout() : ""}
+          ${adminSubView === "written" ? renderWrittenScoringPanel() : `
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h1 class="section-title">Contributor queue</h1>
+                <div class="section-kicker">Contributor-first view with filters, CSV export, and attempt review.</div>
               </div>
-            `).join("")}
+              <div class="row-actions">
+                <button class="button" data-action="export-csv">Export CSV</button>
+                <button class="button secondary" data-action="open-make-admin">Make admin</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              ${renderFilters()}
+              <div style="height: 14px;"></div>
+              ${renderAdminTable(rows)}
+            </div>
           </div>
+          `}
         </div>
       </div>
-      `}
       ${renderAttemptDetail()}
       ${makeAdminOpen ? renderMakeAdminModal() : ""}
+      ${auditLogOpen ? renderAuditLogModal() : ""}
     </section>
   `;
+}
+
+function renderAuditLogCard() {
+  const events = state.audit || [];
+  return `
+    <aside class="panel audit-card">
+      <div class="audit-card-header">
+        <div class="audit-card-icon">${auditIconSvg("log")}</div>
+        <div>
+          <h2 class="section-title small">Audit log</h2>
+          <div class="section-kicker">Resets, threshold edits, locks, offboarding, overrides, and content changes.</div>
+        </div>
+      </div>
+      <div class="audit-timeline">
+        ${events.length ? events.slice(0, 7).map(renderAuditTimelineItem).join("") : `<div class="empty-state compact-empty">No audit events yet.</div>`}
+      </div>
+      <button class="button secondary audit-view-all" data-action="open-audit-log">
+        View full audit log
+        <span aria-hidden="true">&rsaquo;</span>
+      </button>
+    </aside>
+  `;
+}
+
+function renderAuditTimelineItem(event) {
+  const tone = auditTone(event.action);
+  return `
+    <div class="audit-timeline-item">
+      <div class="audit-dot ${tone}">${auditIconSvg(auditIconType(event.action))}</div>
+      <div class="audit-event-copy">
+        <div class="audit-event-title">${escapeHtml(event.action)}</div>
+        <div class="audit-event-target">${escapeHtml(event.target)}</div>
+        <div class="audit-event-meta">${escapeHtml(event.actor)} - ${escapeHtml(auditTimeLabel(event.at))}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAuditLogModal() {
+  const events = state.audit || [];
+  return `
+    <div class="modal-backdrop" data-modal-backdrop="audit-log">
+      <div class="modal-card audit-modal" role="dialog" aria-modal="true" aria-labelledby="audit-log-title">
+        <div class="modal-header">
+          <div>
+            <h2 id="audit-log-title" class="section-title small">Full audit log</h2>
+            <div class="section-kicker">Complete sandbox history for admin actions and assessment changes.</div>
+          </div>
+          <button class="button ghost" data-action="close-audit-log">Close</button>
+        </div>
+        <div class="modal-body">
+          <div class="audit-timeline full">
+            ${events.length ? events.map(renderAuditTimelineItem).join("") : `<div class="empty-state">No audit events yet.</div>`}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function auditTimeLabel(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "-";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function auditTone(action) {
+  const value = String(action || "").toLowerCase();
+  if (value.includes("delete") || value.includes("removed") || value.includes("offboard") || value.includes("lock")) return "tone-red";
+  if (value.includes("image")) return "tone-orange";
+  if (value.includes("assign") || value.includes("email") || value.includes("admin")) return "tone-purple";
+  if (value.includes("publish") || value.includes("pushed") || value.includes("created") || value.includes("duplicated")) return "tone-green";
+  if (value.includes("score") || value.includes("result") || value.includes("submitted")) return "tone-amber";
+  return "tone-blue";
+}
+
+function auditIconType(action) {
+  const value = String(action || "").toLowerCase();
+  if (value.includes("delete") || value.includes("removed")) return "trash";
+  if (value.includes("image")) return "image";
+  if (value.includes("assign") || value.includes("email")) return "mail";
+  if (value.includes("publish") || value.includes("pushed")) return "upload";
+  if (value.includes("admin") || value.includes("offboard") || value.includes("lock")) return "shield";
+  if (value.includes("score") || value.includes("result") || value.includes("submitted")) return "check";
+  return "file";
+}
+
+function auditIconSvg(type) {
+  const paths = {
+    log: `<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h5"/><path d="M9 16h4"/><circle cx="17" cy="17" r="3"/><path d="m19.2 19.2 1.8 1.8"/>`,
+    file: `<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M10 13h6"/><path d="M10 17h4"/>`,
+    mail: `<rect x="4" y="6" width="16" height="12" rx="2"/><path d="m5 7 7 6 7-6"/>`,
+    upload: `<path d="M7 17a4 4 0 0 1 1-7.9A5 5 0 0 1 18 10a3.5 3.5 0 0 1-.5 7H15"/><path d="M12 19V11"/><path d="m9 14 3-3 3 3"/>`,
+    image: `<rect x="4" y="5" width="16" height="14" rx="2"/><path d="m7 16 4-4 3 3 2-2 3 3"/><circle cx="9" cy="9" r="1.5"/>`,
+    trash: `<path d="M5 7h14"/><path d="M9 7V5h6v2"/><path d="M8 10v9"/><path d="M12 10v9"/><path d="M16 10v9"/><path d="M7 7l1 14h8l1-14"/>`,
+    shield: `<path d="M12 3 19 6v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/><path d="m9 12 2 2 4-5"/>`,
+    check: `<circle cx="12" cy="12" r="8"/><path d="m8 12 3 3 5-6"/>`
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths[type] || paths.file}</svg>`;
 }
 
 function renderAdminSubTabs() {
   const writtenCount = writtenReviewRows().length;
   return `
     <div class="subtabs" aria-label="Admin sections">
-      <button class="subtab ${adminSubView === "responses" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="responses">Quiz responses</button>
+      <button class="subtab ${adminSubView === "responses" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="responses">Responses</button>
       <button class="subtab ${adminSubView === "written" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="written">
-        Pending admin review
+        Admin review
         ${writtenCount ? `<span class="pending-count" aria-label="${writtenCount} pending">${writtenCount}</span>` : ""}
       </button>
+    </div>
+  `;
+}
+
+function renderAdminReviewCallout() {
+  const count = writtenReviewRows().length;
+  if (!count) return "";
+  return `
+    <div class="review-callout">
+      <div class="review-callout-icon">${auditIconSvg("shield")}</div>
+      <div>
+        <div class="strong">${count} response${count === 1 ? "" : "s"} need${count === 1 ? "s" : ""} admin review</div>
+        <div class="cell-sub">Review pending responses to keep contributors moving.</div>
+      </div>
+      <button class="button" data-action="admin-subtab" data-admin-subtab="written">Review now</button>
     </div>
   `;
 }
@@ -1565,17 +1680,28 @@ function renderEditor() {
 }
 
 function renderEditorHome() {
+  const total = state.quizzes.length;
+  const published = state.quizzes.filter((itemQuiz) => itemQuiz.status === "Published" && !itemQuiz.draftDirty).length;
+  const draft = state.quizzes.filter((itemQuiz) => itemQuiz.status === "Draft").length;
+  const dirty = state.quizzes.filter((itemQuiz) => itemQuiz.draftDirty).length;
   return `
     <section class="content">
-      <div class="panel">
+      <div class="panel quiz-library-panel">
         <div class="panel-header">
           <div>
-            <h1 class="section-title">Create a new quiz or choose an existing quiz</h1>
-            <div class="section-kicker">Sandbox project: ${escapeHtml(PROJECT_NAME)}. This prototype treats all quizzes as part of one project.</div>
+            <h1 class="section-title">Quiz library</h1>
+            <div class="section-kicker">Sandbox project: ${escapeHtml(PROJECT_NAME)}. Create, manage, publish, and assign qualification quizzes.</div>
           </div>
           <button class="button" data-action="create-quiz">Create new quiz</button>
         </div>
         <div class="panel-body">
+          <div class="library-stats">
+            <div class="library-stat"><span class="status submitted">${total}</span><div><div class="strong">Total quizzes</div><div class="cell-sub">All sandbox assessments</div></div></div>
+            <div class="library-stat"><span class="status qualified">${published}</span><div><div class="strong">Published</div><div class="cell-sub">Ready content</div></div></div>
+            <div class="library-stat"><span class="status in-progress">${draft}</span><div><div class="strong">Draft</div><div class="cell-sub">Not published yet</div></div></div>
+            <div class="library-stat"><span class="status failed">${dirty}</span><div><div class="strong">Unpublished changes</div><div class="cell-sub">Needs publishing</div></div></div>
+          </div>
+          <div class="library-divider"></div>
           <div class="card-grid">
             ${state.quizzes.map((itemQuiz) => `
               <article class="quiz-card">
@@ -1586,6 +1712,10 @@ function renderEditorHome() {
                     <span class="status ${itemQuiz.draftDirty ? "retake-available" : "locked"}" data-dirty-badge="${itemQuiz.id}">${itemQuiz.draftDirty ? "Unpublished changes" : "No unpublished changes"}</span>
                     <span class="status ${assignmentCountForQuiz(itemQuiz.id) ? "qualified" : "locked"}">${assignmentCountForQuiz(itemQuiz.id) ? "On dashboards" : "Not on dashboards"}</span>
                   </div>
+                </div>
+                <div class="quiz-card-body">
+                  ${itemQuiz.questions.length} question${itemQuiz.questions.length === 1 ? "" : "s"} - ${assignmentCountForQuiz(itemQuiz.id)} assigned
+                  ${itemQuiz.draftDirty ? `<div class="library-warning">Not visible on dashboards until published.</div>` : ""}
                 </div>
                 <div class="quiz-card-actions editor-card-actions">
                   <button class="button" data-action="edit-quiz" data-quiz-id="${itemQuiz.id}">Edit quiz</button>
@@ -2996,6 +3126,11 @@ function handleClick(event) {
     render();
     return;
   }
+  if (event.target.dataset.modalBackdrop === "audit-log") {
+    auditLogOpen = false;
+    render();
+    return;
+  }
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
@@ -3005,6 +3140,7 @@ function handleClick(event) {
       selectedAttemptId = null;
       selectedHistoryAttemptId = null;
       makeAdminOpen = false;
+      auditLogOpen = false;
     }
     view = button.dataset.view;
     if (view === "editor") editorMode = "home";
@@ -3090,6 +3226,14 @@ function handleClick(event) {
   }
   if (action === "close-make-admin") {
     makeAdminOpen = false;
+    render();
+  }
+  if (action === "open-audit-log") {
+    auditLogOpen = true;
+    render();
+  }
+  if (action === "close-audit-log") {
+    auditLogOpen = false;
     render();
   }
   if (action === "make-admin-by-email") {
