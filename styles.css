@@ -377,6 +377,12 @@ a {
   gap: 18px;
 }
 
+.quiz-library-panel .card-grid {
+  max-height: min(620px, 64vh);
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .library-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -674,7 +680,8 @@ a {
 }
 
 .table-wrap {
-  overflow-x: auto;
+  max-height: min(540px, 65vh);
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
@@ -695,6 +702,9 @@ td {
 }
 
 th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   color: var(--muted);
   font-size: 12px;
   font-weight: 760;
@@ -983,6 +993,9 @@ tr:last-child td {
 .builder-list {
   display: grid;
   gap: 12px;
+  max-height: min(720px, calc(100vh - 260px));
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .insert-menu {
@@ -1180,6 +1193,13 @@ tr:last-child td {
   display: grid;
   gap: 8px;
   max-height: 290px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.resource-grid,
+.answer-editor-list {
+  max-height: 360px;
   overflow: auto;
   padding-right: 4px;
 }
@@ -1655,6 +1675,12 @@ tr:last-child td {
   display: grid;
 }
 
+.audit-card .audit-timeline {
+  max-height: min(580px, calc(100vh - 280px));
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .audit-timeline::before {
   content: "";
   position: absolute;
@@ -1667,6 +1693,9 @@ tr:last-child td {
 
 .audit-timeline.full {
   margin-top: 0;
+  max-height: min(620px, calc(100vh - 190px));
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .audit-timeline-item {
@@ -1759,6 +1788,9 @@ tr:last-child td {
 .audit-list {
   display: grid;
   gap: 10px;
+  max-height: min(520px, 58vh);
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .audit-item {
