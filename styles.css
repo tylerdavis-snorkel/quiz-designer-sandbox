@@ -1266,7 +1266,8 @@ tr:last-child td {
   pointer-events: auto;
 }
 
-.tour-overlay.is-general::before {
+.tour-overlay.is-general::before,
+.tour-overlay.is-positioning::before {
   content: "";
   position: fixed;
   inset: 0;
