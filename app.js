@@ -377,6 +377,7 @@ let makeAdminOpen = false;
 let bulkRetakeOpen = false;
 let auditLogOpen = false;
 let templateModalOpen = false;
+let tourState = { active: false, index: 0 };
 let selectedAssignments = new Set();
 let retakeDrafts = {};
 let publishNoteQuizId = null;
@@ -424,6 +425,7 @@ function resetState() {
   makeAdminOpen = false;
   bulkRetakeOpen = false;
   templateModalOpen = false;
+  tourState = { active: false, index: 0 };
   publishNoteQuizId = null;
   retakeDrafts = {};
   selectedAssignments = new Set();
@@ -644,6 +646,120 @@ function quiz(id) {
   return byId(state.quizzes, id);
 }
 
+const ADMIN_TOUR_STEPS = [
+  {
+    view: "admin",
+    subtab: "responses",
+    target: "contributor-log",
+    title: "Contributor log",
+    body: "This log shows contributor quiz activity for the current admin view, including retake changes, locks, scoring updates, notes, and attempt review actions."
+  },
+  {
+    view: "admin",
+    subtab: "written",
+    target: "admin-review-tab",
+    title: "Admin review",
+    body: "Admin review is where long written responses wait for scoring. This tour opens the tab briefly so admins can see where those pending reviews live."
+  },
+  {
+    view: "admin",
+    subtab: "responses",
+    target: "bulk-retake",
+    title: "Bulk retake",
+    body: "Bulk retake lets an admin grant retakes to comma-separated emails and reset active course progress for the selected course or quiz."
+  },
+  {
+    view: "admin",
+    subtab: "responses",
+    target: "contributor-queue",
+    title: "Contributor queue",
+    body: "The queue is the main operating table for contributor status, scores, active time, attempt dates, retakes, and attempt review."
+  },
+  {
+    view: "admin",
+    subtab: "responses",
+    target: "retakes-column",
+    title: "Retakes",
+    body: "Retakes can be adjusted directly in the row. When the count changes, a save action appears only for that contributor and course."
+  },
+  {
+    view: "admin",
+    subtab: "responses",
+    target: "view-attempt",
+    title: "View attempt",
+    body: "View attempt opens the attempt details popup, including score, active time, answers, admin controls, and internal notes."
+  },
+  {
+    view: "offboarding",
+    target: "bulk-offboard",
+    title: "Bulk offboard",
+    body: "Bulk offboard accepts comma-separated emails and disables course and quiz actions for those contributors while keeping scores visible."
+  },
+  {
+    view: "offboarding",
+    target: "offboard-restore-action",
+    demo: "active",
+    title: "Offboard action",
+    body: "This temporary sample row shows where an admin would offboard a contributor. The sample is only part of the tour and is not saved."
+  },
+  {
+    view: "offboarding",
+    target: "offboard-restore-action",
+    demo: "offboarded",
+    title: "Restore action",
+    body: "After offboarding, the same row changes to Restore. The temporary log preview shows what would be recorded without changing real data."
+  },
+  {
+    view: "offboarding",
+    target: "offboarding-log",
+    demo: "restored",
+    title: "Offboarding log",
+    body: "The log tracks both offboarding and restored access. These tour entries are examples only and disappear when the tour moves on."
+  },
+  {
+    view: "editor",
+    target: "start-template",
+    title: "Start from template",
+    body: "Templates give admins a course-only, quiz-only, or course-plus-quiz starting point so they do not have to build from a blank page."
+  },
+  {
+    view: "editor",
+    target: "create-blank-course",
+    title: "Create blank course",
+    body: "Create blank course starts a clean course shell for admins who already know the structure they want."
+  },
+  {
+    view: "editor",
+    target: "view-edit-course",
+    title: "View/Edit",
+    body: "View/Edit opens the course in read-only mode first. Click Edit inside the course builder before making content, question, or assignment changes."
+  },
+  {
+    view: "editor",
+    target: "preview-course",
+    title: "Preview",
+    body: "Preview lets admins see the course and quiz as a contributor before publishing or assigning it."
+  },
+  {
+    view: "editor",
+    target: "course-more-actions",
+    title: "More actions",
+    body: "The three-dot menu keeps less common actions tucked away, including duplicate and delete."
+  },
+  {
+    view: "analytics",
+    target: "analytics-overview",
+    title: "Overview",
+    body: "Analytics starts with a selected course or all courses, then summarizes passed, failed, in progress, and not started counts."
+  },
+  {
+    view: "analytics",
+    target: null,
+    title: "Question status",
+    body: "Healthy means a question is performing normally. May need revision means the miss rate is high enough that an admin may want to inspect the wording, answer choices, or training content."
+  }
+];
+
 function cloneValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -774,15 +890,15 @@ function retakeDraftValue(item) {
   return remainingRetakes(item);
 }
 
-function renderRetakeEditor(item) {
+function renderRetakeEditor(item, tourId = "") {
   if (quiz(item.quizId)?.unlimitedRetakes) {
-    return `<div class="retake-static">Unlimited</div>`;
+    return `<div class="retake-static" ${tourId ? `data-tour="${escapeHtml(tourId)}"` : ""}>Unlimited</div>`;
   }
   const savedValue = remainingRetakes(item);
   const draftValue = retakeDraftValue(item);
   const changed = draftValue !== savedValue;
   return `
-    <div class="retake-editor ${changed ? "is-dirty" : ""}">
+    <div class="retake-editor ${changed ? "is-dirty" : ""}" ${tourId ? `data-tour="${escapeHtml(tourId)}"` : ""}>
       <button class="retake-step" data-action="retake-step" data-assignment-id="${item.id}" data-delta="-1" ${draftValue <= 0 ? "disabled" : ""} aria-label="Decrease retakes">-</button>
       <span class="retake-count">${draftValue}</span>
       <button class="retake-step" data-action="retake-step" data-assignment-id="${item.id}" data-delta="1" aria-label="Increase retakes">+</button>
@@ -932,9 +1048,146 @@ function quizAuditEvents(itemQuiz) {
   });
 }
 
+function activeTourStep() {
+  if (!tourState.active || !isAdmin()) return null;
+  return ADMIN_TOUR_STEPS[tourState.index] || null;
+}
+
+function activeTourDemo() {
+  return activeTourStep()?.demo || "";
+}
+
+function syncTourView() {
+  const step = activeTourStep();
+  if (!step) return;
+  view = step.view;
+  selectedAttemptId = null;
+  selectedHistoryAttemptId = null;
+  makeAdminOpen = false;
+  bulkRetakeOpen = false;
+  auditLogOpen = false;
+  templateModalOpen = false;
+  versionHistoryQuizId = null;
+  publishNoteQuizId = null;
+  if (step.view === "admin") {
+    adminSubView = step.subtab || "responses";
+  }
+  if (step.view === "editor") {
+    editorMode = "home";
+    editorReadOnly = true;
+  }
+  if (step.view === "offboarding") {
+    filters.offboardingSearch = "";
+  }
+  if (step.view === "analytics") {
+    selectedQuizId = quiz(selectedQuizId)?.id || state.quizzes[0]?.id || selectedQuizId;
+    filters.metricQuiz = selectedQuizId;
+  }
+}
+
+function startAdminTour() {
+  if (!isAdmin()) return;
+  tourState = { active: true, index: 0 };
+  syncTourView();
+  render();
+}
+
+function nextTourStep() {
+  if (!tourState.active) return;
+  if (tourState.index >= ADMIN_TOUR_STEPS.length - 1) {
+    tourState = { active: false, index: 0 };
+    render();
+    return;
+  }
+  tourState = { active: true, index: tourState.index + 1 };
+  syncTourView();
+  render();
+}
+
+function renderTourOverlay() {
+  const step = activeTourStep();
+  if (!step) return "";
+  const isLast = tourState.index >= ADMIN_TOUR_STEPS.length - 1;
+  return `
+    <div class="tour-overlay ${step.target ? "" : "is-general"}" data-tour-overlay data-tour-target="${escapeHtml(step.target || "")}">
+      <div class="tour-spotlight" data-tour-spotlight></div>
+      <div class="tour-arrow" data-tour-arrow aria-hidden="true"></div>
+      <aside class="tour-card" data-tour-card role="dialog" aria-live="polite">
+        <div class="tour-step-count">${tourState.index + 1} of ${ADMIN_TOUR_STEPS.length}</div>
+        <h2>${escapeHtml(step.title)}</h2>
+        <p>${escapeHtml(step.body)}</p>
+        <div class="tour-card-footer">
+          <button class="tour-next" data-action="next-tour-step" aria-label="${isLast ? "Finish tour" : "Next tour step"}">${isLast ? "Done" : "→"}</button>
+        </div>
+      </aside>
+    </div>
+  `;
+}
+
+function positionTourOverlay() {
+  const overlay = document.querySelector("[data-tour-overlay]");
+  if (!overlay) return;
+  const targetName = overlay.dataset.tourTarget;
+  const spotlight = overlay.querySelector("[data-tour-spotlight]");
+  const card = overlay.querySelector("[data-tour-card]");
+  const arrow = overlay.querySelector("[data-tour-arrow]");
+  if (!card || !spotlight || !arrow) return;
+  const target = targetName ? document.querySelector(`[data-tour="${targetName}"]`) : null;
+  if (!target) {
+    overlay.classList.add("is-general");
+    spotlight.style.display = "none";
+    arrow.style.display = "none";
+    card.style.left = "50%";
+    card.style.top = "50%";
+    card.style.transform = "translate(-50%, -50%)";
+    return;
+  }
+  overlay.classList.remove("is-general");
+  target.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
+  requestAnimationFrame(() => {
+    const rect = target.getBoundingClientRect();
+    const padding = 10;
+    const left = Math.max(12, rect.left - padding);
+    const top = Math.max(12, rect.top - padding);
+    const width = Math.min(window.innerWidth - left - 12, rect.width + padding * 2);
+    const height = Math.min(window.innerHeight - top - 12, rect.height + padding * 2);
+    spotlight.style.display = "block";
+    spotlight.style.left = `${left}px`;
+    spotlight.style.top = `${top}px`;
+    spotlight.style.width = `${width}px`;
+    spotlight.style.height = `${height}px`;
+    const cardWidth = Math.min(360, window.innerWidth - 32);
+    const cardHeight = card.offsetHeight || 220;
+    const spaceBelow = window.innerHeight - (top + height);
+    const cardTop = spaceBelow > cardHeight + 36 ? top + height + 24 : Math.max(16, top - cardHeight - 24);
+    const cardLeft = Math.min(window.innerWidth - cardWidth - 16, Math.max(16, left + width / 2 - cardWidth / 2));
+    card.style.width = `${cardWidth}px`;
+    card.style.left = `${cardLeft}px`;
+    card.style.top = `${cardTop}px`;
+    card.style.transform = "none";
+    const startX = cardLeft + cardWidth / 2;
+    const startY = cardTop < top ? cardTop + cardHeight : cardTop;
+    const endX = left + width / 2;
+    const endY = top + height / 2;
+    const deltaX = endX - startX;
+    const deltaY = endY - startY;
+    const length = Math.max(30, Math.hypot(deltaX, deltaY));
+    const angle = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
+    arrow.style.display = "block";
+    arrow.style.left = `${startX}px`;
+    arrow.style.top = `${startY}px`;
+    arrow.style.width = `${length}px`;
+    arrow.style.transform = `rotate(${angle}deg)`;
+  });
+}
+
 function render() {
   stopTimer();
   document.body.dataset.theme = state.theme;
+  document.body.dataset.tourActive = tourState.active && isAdmin() ? "true" : "false";
+  if (!isAdmin()) {
+    tourState = { active: false, index: 0 };
+  }
   if (!isAdmin() && ["admin", "offboarding", "editor", "analytics"].includes(view)) {
     view = "contributor";
   }
@@ -957,6 +1210,7 @@ function render() {
     analytics: renderAnalytics()
   }[view] || renderContributor();
   app.innerHTML = renderShell(content);
+  if (tourState.active) requestAnimationFrame(positionTourOverlay);
   saveState();
 }
 
@@ -988,8 +1242,11 @@ function renderShell(content) {
             </div>
           </div>
           <div class="topbar-actions">
-            <div class="brand-logo" aria-label="Snorkel">
-              <img src="https://s46486.pcdn.co/wp-content/uploads/2023/05/snorkel_logo_header-1.svg" alt="Snorkel">
+            <div class="brand-help-stack">
+              <div class="brand-logo" aria-label="Snorkel">
+                <img src="https://s46486.pcdn.co/wp-content/uploads/2023/05/snorkel_logo_header-1.svg" alt="Snorkel">
+              </div>
+              ${isAdmin(current) ? `<button class="tour-help-text" data-action="start-admin-tour">Need help navigating?</button>` : ""}
             </div>
             <select class="select" data-action="switch-contributor" aria-label="Current contributor">
               ${state.contributors.map((person) => `
@@ -1014,6 +1271,7 @@ function renderShell(content) {
         </nav>
         ${content}
         ${makeAdminOpen ? renderAdminAccessModal() : ""}
+        ${renderTourOverlay()}
       </main>
     </div>
   `;
@@ -1223,20 +1481,21 @@ function renderAdmin() {
         ${renderAuditLogCard({
           title: "Contributor quiz log",
           kicker: "Retakes, locks, scoring, notes, review actions, and attempt changes.",
-          events: contributorQuizAuditEvents()
+          events: contributorQuizAuditEvents(),
+          tourId: "contributor-log"
         })}
         <div class="admin-main">
           ${renderAdminSubTabs()}
           ${adminSubView === "responses" ? renderAdminReviewCallout() : ""}
           ${adminSubView === "written" ? renderWrittenScoringPanel() : `
-          <div class="panel">
+          <div class="panel" data-tour="contributor-queue">
             <div class="panel-header">
               <div>
                 <h1 class="section-title">Contributor queue</h1>
                 <div class="section-kicker">Contributor-first view with filters, CSV export, and attempt review.</div>
               </div>
               <div class="row-actions">
-                <button class="button secondary" data-action="open-bulk-retake">Bulk retake</button>
+                <button class="button secondary" data-action="open-bulk-retake" data-tour="bulk-retake">Bulk retake</button>
                 <button class="button" data-action="export-csv">Export CSV</button>
               </div>
             </div>
@@ -1256,9 +1515,9 @@ function renderAdmin() {
   `;
 }
 
-function renderAuditLogCard({ title = "Audit log", kicker = "Recent activity across the current view.", events = state.audit || [], showViewAll = true } = {}) {
+function renderAuditLogCard({ title = "Audit log", kicker = "Recent activity across the current view.", events = state.audit || [], showViewAll = true, tourId = "" } = {}) {
   return `
-    <aside class="panel audit-card">
+    <aside class="panel audit-card" ${tourId ? `data-tour="${escapeHtml(tourId)}"` : ""}>
       <div class="audit-card-header">
         <div class="audit-card-icon">${auditIconSvg("log")}</div>
         <div>
@@ -1364,7 +1623,7 @@ function renderAdminSubTabs() {
   return `
     <div class="subtabs" aria-label="Admin sections">
       <button class="subtab ${adminSubView === "responses" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="responses">Responses</button>
-      <button class="subtab ${adminSubView === "written" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="written">Admin review</button>
+      <button class="subtab ${adminSubView === "written" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="written" data-tour="admin-review-tab">Admin review</button>
     </div>
   `;
 }
@@ -1398,11 +1657,51 @@ function renderOffboarding() {
   `;
 }
 
+function tourOffboardingExampleEvents() {
+  const demo = activeTourDemo();
+  if (!["offboarded", "restored"].includes(demo)) return [];
+  const base = {
+    email: "jordan.sample@example.com",
+    actor: currentUser()?.name || "Admin",
+    at: "Tour example"
+  };
+  if (demo === "offboarded") {
+    return [{ ...base, action: "Offboarded", name: "Jordan Sample" }];
+  }
+  return [
+    { ...base, action: "Restored", name: "Jordan Sample" },
+    { ...base, action: "Offboarded", name: "Jordan Sample" }
+  ];
+}
+
+function renderTourOffboardingRow() {
+  const demo = activeTourDemo();
+  if (!["active", "offboarded", "restored"].includes(demo)) return "";
+  const isOffboarded = demo === "offboarded";
+  return `
+    <tr class="tour-demo-row">
+      <td>
+        <div class="cell-title">Jordan Sample</div>
+        <div class="cell-sub">jordan.sample@example.com - Tour example only</div>
+      </td>
+      <td><span class="status ${isOffboarded ? "offboarded" : "passed"}">${isOffboarded ? "Offboarded" : "Active"}</span></td>
+      <td>3</td>
+      <td>Project Otter Quiz - ${isOffboarded ? "Score visible" : "Passed"}</td>
+      <td>
+        <button class="button small ${isOffboarded ? "" : "secondary"} tour-demo-action" data-tour="offboard-restore-action" type="button">
+          ${isOffboarded ? "Restore" : "Offboard"}
+        </button>
+      </td>
+    </tr>
+  `;
+}
+
 function renderOffboardingPanel() {
   const search = filters.offboardingSearch.trim().toLowerCase();
   const contributors = state.contributors
     .filter((person) => !isAdmin(person))
     .filter((person) => !search || `${person.name} ${person.email} ${person.cohort}`.toLowerCase().includes(search));
+  const tourEvents = tourOffboardingExampleEvents();
   return `
     <div class="panel">
       <div class="panel-header">
@@ -1419,7 +1718,7 @@ function renderOffboardingPanel() {
           </div>
           <div class="field compact-field">
             <label for="bulk-offboard-emails">Bulk offboard emails</label>
-            <div class="inline-action-field">
+            <div class="inline-action-field" data-tour="bulk-offboard">
               <input id="bulk-offboard-emails" class="input" data-bulk-offboard-emails placeholder="name@example.com, name2@example.com">
               <button class="button secondary" data-action="bulk-offboard-emails">Bulk offboard</button>
             </div>
@@ -1427,7 +1726,7 @@ function renderOffboardingPanel() {
         </div>
         <div style="height: 14px;"></div>
         <div class="offboarding-grid">
-          <aside class="panel audit-card offboarding-log-card">
+          <aside class="panel audit-card offboarding-log-card" data-tour="offboarding-log">
             <div class="audit-card-header">
               <div class="audit-card-icon">${auditIconSvg("shield")}</div>
               <div>
@@ -1436,6 +1735,12 @@ function renderOffboardingPanel() {
               </div>
             </div>
             <div class="audit-list">
+              ${tourEvents.map((event) => `
+                <div class="audit-item tour-demo-log">
+                  <div class="strong">${escapeHtml(event.action)} - ${escapeHtml(event.name || event.email)}</div>
+                  <div class="cell-sub">${escapeHtml(event.email)} - ${escapeHtml(event.actor)} - ${escapeHtml(event.at)}</div>
+                </div>
+              `).join("")}
               ${(state.offboardingLog || []).length ? state.offboardingLog.slice(0, 8).map((event) => `
                 <div class="audit-item">
                   <div class="strong">${escapeHtml(event.action)} - ${escapeHtml(event.name || event.email)}</div>
@@ -1456,6 +1761,7 @@ function renderOffboardingPanel() {
                 </tr>
               </thead>
               <tbody>
+                ${renderTourOffboardingRow()}
                 ${contributors.map((person) => {
                   const assignedCount = state.assignments.filter((item) => item.contributorId === person.id).length;
                   const latest = state.attempts
@@ -1750,7 +2056,7 @@ function renderAnalyticsOverview() {
   const stats = adminStats();
   const metricTitle = filters.metricQuiz === "All" ? "All courses" : quiz(filters.metricQuiz)?.title || "All courses";
   return `
-    <div class="panel">
+    <div class="panel" data-tour="analytics-overview">
       <div class="panel-body">
         <div class="metrics-toolbar">
           <div>
@@ -1838,6 +2144,8 @@ function filteredAdminRows() {
 }
 
 function renderAdminTable(rows) {
+  const retakeTourRowId = rows[0]?.item.id;
+  const firstAttemptRowId = rows.find((row) => row.latest)?.item.id;
   return `
     <div class="table-wrap">
       <table>
@@ -1868,10 +2176,10 @@ function renderAdminTable(rows) {
               <td>${row.latest && row.latest.score !== null ? `${row.latest.score}%` : "Pending"}</td>
               <td>${row.latest ? formatSeconds(row.latest.activeSeconds) : "-"}</td>
               <td>${escapeHtml(responseDateLabel(row))}</td>
-              <td>${renderRetakeEditor(row.item)}</td>
+              <td>${renderRetakeEditor(row.item, row.item.id === retakeTourRowId ? "retakes-column" : "")}</td>
               <td>
                 <div class="row-actions">
-                  <button class="button small secondary" data-action="view-attempt" data-attempt-id="${row.latest ? row.latest.id : ""}" ${row.latest ? "" : "disabled"}>View attempt</button>
+                  <button class="button small secondary" data-action="view-attempt" data-attempt-id="${row.latest ? row.latest.id : ""}" ${row.item.id === firstAttemptRowId ? `data-tour="view-attempt"` : ""} ${row.latest ? "" : "disabled"}>View attempt</button>
                 </div>
               </td>
             </tr>
@@ -2181,8 +2489,8 @@ function renderEditorHome() {
             <div class="section-kicker">Sandbox project: ${escapeHtml(PROJECT_NAME)}. Create, manage, publish, and assign course content and knowledge checks.</div>
           </div>
           <div class="row-actions">
-            <button class="button secondary" data-action="open-template-modal">Start from template</button>
-            <button class="button" data-action="create-quiz">Create blank course</button>
+            <button class="button secondary" data-action="open-template-modal" data-tour="start-template">Start from template</button>
+            <button class="button" data-action="create-quiz" data-tour="create-blank-course">Create blank course</button>
           </div>
         </div>
         <div class="panel-body">
@@ -2194,7 +2502,7 @@ function renderEditorHome() {
           </div>
           <div class="library-divider"></div>
           <div class="card-grid">
-            ${state.quizzes.map((itemQuiz) => `
+            ${state.quizzes.map((itemQuiz, index) => `
               <article class="quiz-card">
                 <div>
                   <h2 class="quiz-card-title">${escapeHtml(itemQuiz.title)}</h2>
@@ -2207,11 +2515,11 @@ function renderEditorHome() {
                   ${itemQuiz.coursePages.length} course page${itemQuiz.coursePages.length === 1 ? "" : "s"} - ${itemQuiz.questions.length} question${itemQuiz.questions.length === 1 ? "" : "s"} - ${assignmentCountForQuiz(itemQuiz.id)} assigned
                 </div>
                 <div class="quiz-card-actions editor-card-actions">
-                  <button class="button" data-action="view-quiz" data-quiz-id="${itemQuiz.id}">View/Edit</button>
+                  <button class="button" data-action="view-quiz" data-quiz-id="${itemQuiz.id}" ${index === 0 ? `data-tour="view-edit-course"` : ""}>View/Edit</button>
                   <div class="editor-card-secondary">
-                    <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}">Preview</button>
+                    <button class="button secondary" data-action="preview-quiz" data-quiz-id="${itemQuiz.id}" ${index === 0 ? `data-tour="preview-course"` : ""}>Preview</button>
                     <div class="card-menu">
-                      <button class="button secondary menu-trigger" type="button" aria-label="More quiz actions">...</button>
+                      <button class="button secondary menu-trigger" type="button" aria-label="More quiz actions" ${index === 0 ? `data-tour="course-more-actions"` : ""}>...</button>
                       <div class="card-menu-panel" role="menu">
                         <button type="button" data-action="duplicate-quiz" data-quiz-id="${itemQuiz.id}">Duplicate</button>
                         <button type="button" class="danger-menu-item" data-action="delete-quiz" data-quiz-id="${itemQuiz.id}">Delete</button>
@@ -3941,7 +4249,16 @@ function handleClick(event) {
     "move-answer"
   ]);
   if (editorReadOnly && view === "editor" && editorMode === "detail" && editorMutationActions.has(action)) return;
+  if (action === "start-admin-tour") {
+    startAdminTour();
+    return;
+  }
+  if (action === "next-tour-step") {
+    nextTourStep();
+    return;
+  }
   if (action === "nav") {
+    tourState = { active: false, index: 0 };
     if (!isAdmin() && button.dataset.view !== "contributor") return;
     if (button.dataset.view !== view) {
       selectedAttemptId = null;
@@ -4624,5 +4941,6 @@ document.addEventListener("dragleave", handleDragLeave);
 document.addEventListener("drop", handleDrop);
 document.addEventListener("dragend", handleDragEnd);
 window.addEventListener("beforeunload", saveSession);
+window.addEventListener("resize", positionTourOverlay);
 
 render();
