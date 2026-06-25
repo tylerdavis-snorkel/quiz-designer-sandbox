@@ -1745,7 +1745,6 @@ function adminStats() {
 }
 
 function renderAnalyticsOverview() {
-  if (filters.metricQuiz !== "All" && !quiz(filters.metricQuiz)) filters.metricQuiz = "All";
   const stats = adminStats();
   const metricTitle = filters.metricQuiz === "All" ? "All quizzes" : quiz(filters.metricQuiz)?.title || "All quizzes";
   return `
@@ -1755,13 +1754,6 @@ function renderAnalyticsOverview() {
           <div>
             <h1 class="section-title">Overview</h1>
             <div class="section-kicker">${escapeHtml(metricTitle)}</div>
-          </div>
-          <div class="field metric-select">
-            <label for="metric-quiz">Quiz</label>
-            <select id="metric-quiz" class="select" data-filter="metricQuiz">
-              <option>All</option>
-              ${state.quizzes.map((itemQuiz) => `<option value="${itemQuiz.id}" ${filters.metricQuiz === itemQuiz.id ? "selected" : ""}>${escapeHtml(itemQuiz.title)}</option>`).join("")}
-            </select>
           </div>
         </div>
         <div class="stat-grid">
@@ -2494,6 +2486,8 @@ function renderAnswerEditor(itemQuiz, question) {
 }
 
 function renderAnalytics() {
+  if (!quiz(selectedQuizId)) selectedQuizId = state.quizzes[0]?.id;
+  filters.metricQuiz = selectedQuizId;
   const itemQuiz = quiz(selectedQuizId);
   const stats = questionStats(itemQuiz);
   const submitted = state.attempts.filter((attempt) => attempt.quizId === itemQuiz.id && ["Passed", "Failed", "Submitted"].includes(attempt.status));
@@ -2507,7 +2501,7 @@ function renderAnalytics() {
           <div class="section-kicker">Deep dive by quiz, including miss rate and answer distribution.</div>
         </div>
         <div class="row-actions">
-          <select class="select" data-action="select-editor-quiz">
+          <select class="select analytics-quiz-select" data-action="select-analytics-quiz" aria-label="Analytics quiz">
             ${state.quizzes.map((candidate) => `<option value="${candidate.id}" ${candidate.id === selectedQuizId ? "selected" : ""}>${escapeHtml(candidate.title)}</option>`).join("")}
           </select>
           <button class="button secondary" data-action="export-analytics-csv" data-quiz-id="${itemQuiz.id}">Export CSV</button>
@@ -4173,6 +4167,11 @@ function handleChange(event) {
   }
   if (target.dataset.action === "select-editor-quiz") {
     selectedQuizId = target.value;
+    render();
+  }
+  if (target.dataset.action === "select-analytics-quiz") {
+    selectedQuizId = target.value;
+    filters.metricQuiz = target.value;
     render();
   }
   if (editorReadOnly && view === "editor" && editorMode === "detail" && (

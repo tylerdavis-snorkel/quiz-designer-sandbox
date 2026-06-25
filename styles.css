@@ -1090,6 +1090,10 @@ tr:last-child td {
   width: 92px;
 }
 
+.analytics-quiz-select {
+  width: min(520px, 52vw);
+}
+
 .offboarding-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.45fr) minmax(0, 1.55fr);
