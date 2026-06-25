@@ -468,6 +468,39 @@ a {
   font-size: 17px;
 }
 
+.template-section {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--blue-soft) 34%, transparent), transparent 68%),
+    color-mix(in srgb, var(--surface-3) 42%, transparent);
+  display: grid;
+  gap: 14px;
+}
+
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-card {
+  min-height: 180px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  display: grid;
+  gap: 14px;
+  align-content: space-between;
+  box-shadow: var(--shadow);
+}
+
+.template-card .button {
+  width: 100%;
+}
+
 .library-divider {
   height: 1px;
   background: var(--line);
@@ -545,6 +578,21 @@ a {
   position: relative;
 }
 
+.card-menu::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  width: 190px;
+  height: 16px;
+  display: none;
+}
+
+.card-menu:hover::after,
+.card-menu:focus-within::after {
+  display: block;
+}
+
 .menu-trigger {
   min-width: 48px;
   padding-left: 0;
@@ -554,7 +602,7 @@ a {
 .card-menu-panel {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 4px);
   z-index: 8;
   width: 170px;
   padding: 6px;
@@ -1311,6 +1359,21 @@ tr:last-child td {
   position: relative;
 }
 
+.insert-menu::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 100%;
+  width: 180px;
+  height: 14px;
+  display: none;
+}
+
+.insert-menu:hover::after,
+.insert-menu:focus-within::after {
+  display: block;
+}
+
 .insert-button {
   width: 30px;
   height: 30px;
@@ -1333,7 +1396,7 @@ tr:last-child td {
 .insert-menu-options {
   position: absolute;
   right: 0;
-  top: calc(100% + 6px);
+  top: calc(100% + 3px);
   z-index: 6;
   min-width: 150px;
   padding: 6px;
@@ -2269,6 +2332,7 @@ td,
 @media (max-width: 1120px) {
   .card-grid,
   .library-stats,
+  .template-grid,
   .stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2333,6 +2397,10 @@ td,
 
   .nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .template-grid {
+    grid-template-columns: 1fr;
   }
 
   .topbar {

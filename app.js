@@ -964,14 +964,14 @@ function renderShell(content) {
     contributor: "Contributor dashboard",
     admin: "Contributor overview",
     offboarding: "Offboarding",
-    editor: editorMode === "home" ? "Quiz library" : "Quiz editor",
+    editor: editorMode === "home" ? "Course library" : "Course builder",
     analytics: "Quiz analytics"
   }[view];
   const subtitle = {
     contributor: "Complete required assessments and review your history.",
     admin: "Manage contributor qualifications and review quality.",
-    offboarding: "Manage access while preserving read-only history.",
-    editor: editorMode === "home" ? "Create, manage, publish, and assign qualification quizzes." : "View assessment details, then edit when changes are needed.",
+    offboarding: "Manage contributor access to courses and quizzes.",
+    editor: editorMode === "home" ? "Create, manage, publish, and assign course content and knowledge checks." : "View course details, then edit when changes are needed.",
     analytics: "Review question performance and score patterns."
   }[view];
   return `
@@ -1006,7 +1006,7 @@ function renderShell(content) {
           ${isAdmin(current) ? `
             ${navButton("admin", "Contributor overview")}
             ${navButton("offboarding", "Offboarding")}
-            ${navButton("editor", "Quiz library")}
+            ${navButton("editor", "Course library")}
             ${navButton("analytics", "Analytics")}
           ` : ""}
         </nav>
@@ -1042,14 +1042,14 @@ function renderContributor() {
         <div class="panel">
           <div class="panel-header">
             <div>
-              <h1 class="section-title">Required quizzes</h1>
-              <div class="section-kicker">Start here. Completed attempts move into history.</div>
+              <h1 class="section-title">Required courses</h1>
+              <div class="section-kicker">Start here. If a project is inactive, its course and quiz are visible but unavailable until the project reopens. Completed attempts move into score history.</div>
             </div>
-            ${current.offboarded ? `<span class="status offboarded">View-only history</span>` : ""}
+            ${current.offboarded ? `<span class="status offboarded">Score-only history</span>` : ""}
           </div>
           <div class="panel-body">
             ${required.length ? `<div class="card-grid">${required.map(renderContributorQuizCard).join("")}</div>` : `
-              <div class="empty-state">No required quizzes right now.</div>
+              <div class="empty-state">No required courses right now.</div>
             `}
           </div>
         </div>
@@ -1065,7 +1065,7 @@ function renderContributor() {
               <div class="stat">
                 <div class="stat-label">Passed</div>
                 <div class="stat-value">${passedCount}</div>
-                <div class="stat-note">Green check on passed quizzes</div>
+                <div class="stat-note">Green check on passed courses</div>
               </div>
               <div class="stat">
                 <div class="stat-label">Open items</div>
@@ -1079,12 +1079,12 @@ function renderContributor() {
       <div class="panel">
         <div class="panel-header">
           <div>
-            <h2 class="section-title small">History</h2>
-            <div class="section-kicker">Read-only attempt history stays available after offboarding.</div>
+            <h2 class="section-title small">Score history</h2>
+            <div class="section-kicker">Past attempts show score and status only. Missed answers are not shown.</div>
           </div>
         </div>
         <div class="panel-body">
-          ${history.length ? renderContributorHistory(history) : `<div class="empty-state">Completed quizzes will appear here.</div>`}
+          ${history.length ? renderContributorHistory(history) : `<div class="empty-state">Completed courses and quizzes will appear here.</div>`}
         </div>
       </div>
       ${renderContributorHistoryDetail()}
@@ -1100,9 +1100,9 @@ function renderContributorQuizCard(item) {
   const disabled = ["Locked", "Project inactive", "Offboarded"].includes(status) || person?.offboarded;
   const buttonLabel = status === "In progress" ? "Resume" : status === "Retake available" ? "Retake" : "Start";
   const message = status === "Project inactive"
-    ? "This project is currently inactive. Your quiz history is still available."
+    ? "This project is currently inactive. Course and quiz actions are disabled, but scores remain visible."
     : status === "Offboarded"
-      ? "This contributor has been offboarded. Quiz actions are disabled, but history is still available."
+      ? "This contributor has been offboarded. Course and quiz actions are disabled, but scores remain visible."
     : status === "Locked"
       ? "An admin has locked this quiz."
       : `${itemQuiz.estimatedMinutes} minute estimate. Active quiz time is recorded.`;
@@ -1202,11 +1202,11 @@ function renderContributorHistoryDetail() {
             <div class="stat">
               <div class="stat-label">Submitted</div>
               <div class="stat-value" style="font-size: 22px;">${formatDate(attempt.submittedAt)}</div>
-              <div class="stat-note">History remains readable.</div>
+              <div class="stat-note">Past attempts show score and status only.</div>
             </div>
           </div>
           <div style="height: 16px;"></div>
-          <div class="empty-state">Scores and status are visible here. Correct answers and missed-question review are only available to admins.</div>
+          <div class="empty-state">Scores and status are visible here. Correct answers and missed-question review are not shown to contributors.</div>
         </div>
       </div>
     </div>
@@ -1388,7 +1388,7 @@ function renderOffboarding() {
       <div class="toolbar">
         <div>
           <h1 class="section-title">Offboarding</h1>
-          <div class="section-kicker">Manage contributor access separately from quiz progress, especially when the contributor list gets long.</div>
+          <div class="section-kicker">Manage contributor access to courses and quizzes.</div>
         </div>
       </div>
       ${renderOffboardingPanel()}
@@ -1406,7 +1406,7 @@ function renderOffboardingPanel() {
       <div class="panel-header">
         <div>
           <h2 class="section-title small">Contributor access</h2>
-          <div class="section-kicker">Offboarding is contributor-level. It disables quiz actions but keeps attempt history visible.</div>
+          <div class="section-kicker">Offboarded contributor quizzes will be disabled, but they can still view their scores.</div>
         </div>
       </div>
       <div class="panel-body">
@@ -1746,7 +1746,7 @@ function adminStats() {
 
 function renderAnalyticsOverview() {
   const stats = adminStats();
-  const metricTitle = filters.metricQuiz === "All" ? "All quizzes" : quiz(filters.metricQuiz)?.title || "All quizzes";
+  const metricTitle = filters.metricQuiz === "All" ? "All courses" : quiz(filters.metricQuiz)?.title || "All courses";
   return `
     <div class="panel">
       <div class="panel-body">
@@ -1976,7 +1976,7 @@ function renderEditor() {
       <div class="toolbar">
         <div class="editor-heading">
           <div class="editor-heading-actions">
-            <button class="back-arrow-button" data-action="editor-home" aria-label="Back to all quizzes" title="Back to all quizzes">←</button>
+            <button class="back-arrow-button" data-action="editor-home" aria-label="Back to course library" title="Back to course library">←</button>
             ${editorReadOnly ? "" : `<button class="button secondary discard-button" data-action="discard-editor-changes">Discard changes</button>`}
             <button class="button secondary discard-button" data-action="open-version-history" data-quiz-id="${itemQuiz.id}">Version history</button>
           </div>
@@ -2117,22 +2117,59 @@ function renderEditorHome() {
   const published = state.quizzes.filter((itemQuiz) => itemQuiz.status === "Published" && !itemQuiz.draftDirty).length;
   const draft = state.quizzes.filter((itemQuiz) => itemQuiz.status === "Draft").length;
   const dirty = state.quizzes.filter((itemQuiz) => itemQuiz.draftDirty).length;
+  const templates = [
+    {
+      id: "course-only",
+      title: "Course only",
+      body: "Welcome slide, 4 course content slides, and an outro slide.",
+      action: "Use course template"
+    },
+    {
+      id: "quiz-only",
+      title: "Quiz only",
+      body: "Intro slide and 5 quiz questions, including multiple choice and true/false.",
+      action: "Use quiz template"
+    },
+    {
+      id: "course-quiz",
+      title: "Course + quiz",
+      body: "Welcome, 2 content slides, outro, knowledge-check intro, and 3 question types.",
+      action: "Use combined template"
+    }
+  ];
   return `
     <section class="content">
       <div class="panel quiz-library-panel">
         <div class="panel-header">
           <div>
-            <h1 class="section-title">Quiz library</h1>
-            <div class="section-kicker">Sandbox project: ${escapeHtml(PROJECT_NAME)}. Create, manage, publish, and assign qualification quizzes.</div>
+            <h1 class="section-title">Course library</h1>
+            <div class="section-kicker">Sandbox project: ${escapeHtml(PROJECT_NAME)}. Create, manage, publish, and assign course content and knowledge checks.</div>
           </div>
-          <button class="button" data-action="create-quiz">Create new quiz</button>
+          <button class="button" data-action="create-quiz">Create blank course</button>
         </div>
         <div class="panel-body">
           <div class="library-stats">
-            <div class="library-stat"><span class="status submitted">${total}</span><div><div class="strong">Total quizzes</div><div class="cell-sub">All sandbox assessments</div></div></div>
+            <div class="library-stat"><span class="status submitted">${total}</span><div><div class="strong">Total courses</div><div class="cell-sub">All sandbox learning content</div></div></div>
             <div class="library-stat"><span class="status qualified">${published}</span><div><div class="strong">Published</div><div class="cell-sub">Ready content</div></div></div>
             <div class="library-stat"><span class="status in-progress">${draft}</span><div><div class="strong">Draft</div><div class="cell-sub">Not published yet</div></div></div>
             <div class="library-stat"><span class="status failed">${dirty}</span><div><div class="strong">Unpublished changes</div><div class="cell-sub">Needs publishing</div></div></div>
+          </div>
+          <div class="template-section">
+            <div>
+              <h2 class="section-title small">Start from a template</h2>
+              <div class="section-kicker">Use a starter structure when building from scratch feels too open-ended.</div>
+            </div>
+            <div class="template-grid">
+              ${templates.map((template) => `
+                <article class="template-card">
+                  <div>
+                    <h3 class="quiz-card-title">${escapeHtml(template.title)}</h3>
+                    <p class="quiz-card-body">${escapeHtml(template.body)}</p>
+                  </div>
+                  <button class="button secondary" data-action="create-template" data-template="${template.id}">${escapeHtml(template.action)}</button>
+                </article>
+              `).join("")}
+            </div>
           </div>
           <div class="library-divider"></div>
           <div class="card-grid">
@@ -2146,7 +2183,7 @@ function renderEditorHome() {
                   </div>
                 </div>
                 <div class="quiz-card-body">
-                  ${itemQuiz.questions.length} question${itemQuiz.questions.length === 1 ? "" : "s"} - ${assignmentCountForQuiz(itemQuiz.id)} assigned
+                  ${itemQuiz.coursePages.length} course page${itemQuiz.coursePages.length === 1 ? "" : "s"} - ${itemQuiz.questions.length} question${itemQuiz.questions.length === 1 ? "" : "s"} - ${assignmentCountForQuiz(itemQuiz.id)} assigned
                 </div>
                 <div class="quiz-card-actions editor-card-actions">
                   <button class="button" data-action="view-quiz" data-quiz-id="${itemQuiz.id}">View/Edit</button>
@@ -2224,7 +2261,7 @@ function renderAssignmentPanel(itemQuiz) {
       <div class="panel-body">
         <div class="publish-note">
           <div class="strong">${editorReadOnly ? "Viewing assignment settings" : canAssign ? "Ready to assign" : "Publish content first"}</div>
-          <div class="cell-sub">${editorReadOnly ? "Click Edit before changing dashboard assignment." : canAssign ? "Assigning makes the course appear under Required quizzes." : "Unpublished changes are not pushed to dashboards."}</div>
+          <div class="cell-sub">${editorReadOnly ? "Click Edit before changing dashboard assignment." : canAssign ? "Assigning makes the course appear under Required courses." : "Unpublished changes are not pushed to dashboards."}</div>
           <div class="cell-sub">Emails come from the signed-in contributor roster or from this allowlist for people who have not signed in yet.</div>
         </div>
         <div style="height: 12px;"></div>
@@ -2989,7 +3026,7 @@ function gradeAnswers(itemQuiz, answers) {
     if (isCorrect(question, answers[question.id])) earned += Number(question.weight || 1);
   });
   return {
-    score: possible ? Math.round((earned / possible) * 100) : 0,
+    score: possible ? Math.round((earned / possible) * 100) : 100,
     manualReview
   };
 }
@@ -3163,13 +3200,137 @@ function blankQuestion() {
   });
 }
 
-function createNewQuiz() {
+function templateCoursePage(title, guidance, example) {
+  return {
+    id: uniqueId("cp"),
+    title,
+    body: `${guidance}\n\nExample:\n${example}`,
+    bodyHtml: `
+      <h2>${escapeHtml(title)}</h2>
+      <p><strong>What to put here:</strong> ${escapeHtml(guidance)}</p>
+      <p><strong>Example:</strong> ${escapeHtml(example)}</p>
+    `
+  };
+}
+
+function templateQuestion(type, prompt, hint, answers = []) {
+  return normalizeQuestionByType({
+    id: uniqueId("qst"),
+    type,
+    weight: 1,
+    prompt,
+    hint,
+    referenceLabel: "",
+    resources: [],
+    answers,
+    correctOrder: answers.map((answer) => answer.id)
+  });
+}
+
+function templateAnswer(text, correct = false) {
+  return { id: uniqueId("ans"), text, correct };
+}
+
+function courseTemplateContent(templateType) {
+  const welcome = templateCoursePage(
+    "Welcome",
+    "Introduce the contributor to the course, the goal of the training, and what they should be able to do by the end.",
+    "Welcome. In this course, you will learn the project goal, review the core guidelines, and practice applying the rubric before starting real tasks."
+  );
+  const outro = templateCoursePage(
+    "Wrap-up",
+    "Summarize the most important takeaways and tell contributors what to do next.",
+    "You have reviewed the core workflow and examples. Before tasking, keep the guidelines open and use the rubric as the source of truth."
+  );
+  const coursePages = [];
+  const questions = [];
+  if (templateType === "course-only") {
+    coursePages.push(
+      welcome,
+      templateCoursePage("Course content 1", "Explain the first major concept or policy contributors need to understand.", "Use this page to define the project objective and when contributors should pause to reread the guidelines."),
+      templateCoursePage("Course content 2", "Show a concrete example that demonstrates the expected judgment.", "Example: compare two short responses and explain why one better follows the instruction hierarchy."),
+      templateCoursePage("Course content 3", "Describe common mistakes and how to avoid them.", "Example: do not reward a polished answer if it ignores the requested format or invents unsupported details."),
+      templateCoursePage("Course content 4", "Give contributors a final checklist they can use while tasking.", "Example checklist: read the prompt, check constraints, compare evidence, apply the rubric, and write a concise rationale."),
+      outro
+    );
+  }
+  if (templateType === "quiz-only") {
+    coursePages.push(templateCoursePage(
+      "Quiz introduction",
+      "Introduce the quiz expectations, what the score means, and any resources contributors should open first.",
+      "This knowledge check confirms that you can apply the guidelines. Read each scenario carefully and choose the answer that best follows the rubric."
+    ));
+    questions.push(
+      templateQuestion("Multiple choice", "Which action should a contributor take first before rating a task?", "Start with the source of truth for the course.", [
+        templateAnswer("Read the guidelines and task instructions", true),
+        templateAnswer("Choose the answer that sounds more confident", false),
+        templateAnswer("Prefer the longer response", false),
+        templateAnswer("Use memory from a different project", false)
+      ]),
+      templateQuestion("True/false", "A response can lose quality points even if it is friendly and well-written.", "Tone does not replace correctness.", [
+        templateAnswer("True", true),
+        templateAnswer("False", false)
+      ]),
+      templateQuestion("Multi-select", "Which signals should be checked before submitting a rating?", "Look for constraints, evidence, and rubric fit.", [
+        templateAnswer("Prompt constraints", true),
+        templateAnswer("Required format", true),
+        templateAnswer("Unsupported claims", true),
+        templateAnswer("Response length alone", false)
+      ]),
+      templateQuestion("Ranking", "Put the review workflow in the recommended order.", "Move from understanding to evidence to scoring.", [
+        templateAnswer("Read the prompt and guidelines"),
+        templateAnswer("Check constraints and evidence"),
+        templateAnswer("Apply the rubric"),
+        templateAnswer("Write a concise rationale")
+      ]),
+      templateQuestion("Long text", "Briefly explain how you would handle a response that sounds confident but invents a detail.", "Name the issue and connect it to the guidelines.")
+    );
+  }
+  if (templateType === "course-quiz") {
+    coursePages.push(
+      welcome,
+      templateCoursePage("Course content 1", "Teach the first project concept contributors need before answering questions.", "Example: explain the instruction hierarchy and why project-specific guidance wins over general preference."),
+      templateCoursePage("Course content 2", "Show a short example and explain the desired judgment.", "Example: one response follows the requested format while the other adds unsupported details; explain which should rate higher."),
+      outro,
+      templateCoursePage("Knowledge check introduction", "Transition from training content into the quiz portion.", "You are ready for the knowledge check. Use the same guidelines and reasoning process from the course pages.")
+    );
+    questions.push(
+      templateQuestion("Multiple choice", "A response follows the format but misses one required constraint. What should happen?", "Required constraints matter even when the response looks organized.", [
+        templateAnswer("It should lose quality credit for missing the constraint", true),
+        templateAnswer("It should receive full credit because the format is correct", false),
+        templateAnswer("It should be ignored if the other response is shorter", false)
+      ]),
+      templateQuestion("True/false", "Contributors should use the course guidelines as the source of truth when answers seem ambiguous.", "The guidelines anchor the decision.", [
+        templateAnswer("True", true),
+        templateAnswer("False", false)
+      ]),
+      templateQuestion("Scenario review", "A task has two acceptable responses, but one gives a clearer rationale using evidence from the prompt. Which response should rate higher?", "Prefer the response that better satisfies the rubric and supports its judgment.", [
+        templateAnswer("The clearer evidence-backed response", true),
+        templateAnswer("The shorter response automatically", false),
+        templateAnswer("The response that uses more confident wording", false)
+      ])
+    );
+  }
+  return { coursePages, questions };
+}
+
+function createNewQuiz(templateType = "blank") {
   const id = `q-${Date.now()}`;
-  const page = blankCoursePage();
-  const question = blankQuestion();
+  const isTemplate = templateType !== "blank";
+  const template = isTemplate ? courseTemplateContent(templateType) : null;
+  const page = isTemplate ? null : blankCoursePage();
+  const question = isTemplate ? null : blankQuestion();
+  const coursePages = isTemplate ? template.coursePages : [page];
+  const questions = isTemplate ? template.questions : [question];
   const newQuiz = {
     id,
-    title: "Untitled qualification quiz",
+    title: isTemplate
+      ? templateType === "course-only"
+        ? "Untitled course"
+        : templateType === "quiz-only"
+          ? "Untitled quiz"
+          : "Untitled course and quiz"
+      : "Untitled course",
     project: PROJECT_NAME,
     status: "Draft",
     draftDirty: true,
@@ -3181,16 +3342,19 @@ function createNewQuiz() {
     estimatedMinutes: 15,
     randomizeQuestions: true,
     randomizeAnswers: true,
-    coursePages: [page],
-    questions: [question],
-    contentOrder: [contentKey("course", page.id), contentKey("question", question.id)]
+    coursePages,
+    questions,
+    contentOrder: [
+      ...coursePages.map((item) => contentKey("course", item.id)),
+      ...questions.map((item) => contentKey("question", item.id))
+    ]
   };
   state.quizzes.unshift(newQuiz);
   selectedQuizId = id;
   editorMode = "detail";
   editorReadOnly = false;
   captureEditorSnapshot(id);
-  addAudit("Quiz created", newQuiz.title);
+  addAudit(isTemplate ? "Course template created" : "Course created", newQuiz.title);
   render();
 }
 
@@ -3971,6 +4135,9 @@ function handleClick(event) {
   }
   if (action === "create-quiz") {
     createNewQuiz();
+  }
+  if (action === "create-template") {
+    createNewQuiz(button.dataset.template || "blank");
   }
   if (action === "duplicate-quiz") {
     duplicateQuiz(button.dataset.quizId);
