@@ -376,6 +376,7 @@ let adminSubView = "responses";
 let makeAdminOpen = false;
 let bulkRetakeOpen = false;
 let auditLogOpen = false;
+let templateModalOpen = false;
 let selectedAssignments = new Set();
 let retakeDrafts = {};
 let publishNoteQuizId = null;
@@ -422,6 +423,7 @@ function resetState() {
   adminSubView = "responses";
   makeAdminOpen = false;
   bulkRetakeOpen = false;
+  templateModalOpen = false;
   publishNoteQuizId = null;
   retakeDrafts = {};
   selectedAssignments = new Set();
@@ -2112,12 +2114,8 @@ function renderPublishNoteModal(itemQuiz) {
   `;
 }
 
-function renderEditorHome() {
-  const total = state.quizzes.length;
-  const published = state.quizzes.filter((itemQuiz) => itemQuiz.status === "Published" && !itemQuiz.draftDirty).length;
-  const draft = state.quizzes.filter((itemQuiz) => itemQuiz.status === "Draft").length;
-  const dirty = state.quizzes.filter((itemQuiz) => itemQuiz.draftDirty).length;
-  const templates = [
+function courseTemplateOptions() {
+  return [
     {
       id: "course-only",
       title: "Course only",
@@ -2137,6 +2135,43 @@ function renderEditorHome() {
       action: "Use combined template"
     }
   ];
+}
+
+function renderTemplateModal() {
+  const templates = courseTemplateOptions();
+  return `
+    <div class="modal-backdrop" data-modal-backdrop="template">
+      <div class="modal-card template-modal-card" role="dialog" aria-modal="true" aria-labelledby="template-modal-title">
+        <div class="modal-header">
+          <div>
+            <h2 id="template-modal-title" class="section-title small">Start from template</h2>
+            <div class="section-kicker">Choose a starter structure, then edit the content to fit the course.</div>
+          </div>
+          <button class="button ghost" data-action="close-template-modal">Close</button>
+        </div>
+        <div class="modal-body">
+          <div class="template-grid modal-template-grid">
+            ${templates.map((template) => `
+              <article class="template-card">
+                <div>
+                  <h3 class="quiz-card-title">${escapeHtml(template.title)}</h3>
+                  <p class="quiz-card-body">${escapeHtml(template.body)}</p>
+                </div>
+                <button class="button secondary" data-action="create-template" data-template="${template.id}">${escapeHtml(template.action)}</button>
+              </article>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderEditorHome() {
+  const total = state.quizzes.length;
+  const published = state.quizzes.filter((itemQuiz) => itemQuiz.status === "Published" && !itemQuiz.draftDirty).length;
+  const draft = state.quizzes.filter((itemQuiz) => itemQuiz.status === "Draft").length;
+  const dirty = state.quizzes.filter((itemQuiz) => itemQuiz.draftDirty).length;
   return `
     <section class="content">
       <div class="panel quiz-library-panel">
@@ -2145,7 +2180,10 @@ function renderEditorHome() {
             <h1 class="section-title">Course library</h1>
             <div class="section-kicker">Sandbox project: ${escapeHtml(PROJECT_NAME)}. Create, manage, publish, and assign course content and knowledge checks.</div>
           </div>
-          <button class="button" data-action="create-quiz">Create blank course</button>
+          <div class="row-actions">
+            <button class="button secondary" data-action="open-template-modal">Start from template</button>
+            <button class="button" data-action="create-quiz">Create blank course</button>
+          </div>
         </div>
         <div class="panel-body">
           <div class="library-stats">
@@ -2153,23 +2191,6 @@ function renderEditorHome() {
             <div class="library-stat"><span class="status qualified">${published}</span><div><div class="strong">Published</div><div class="cell-sub">Ready content</div></div></div>
             <div class="library-stat"><span class="status in-progress">${draft}</span><div><div class="strong">Draft</div><div class="cell-sub">Not published yet</div></div></div>
             <div class="library-stat"><span class="status failed">${dirty}</span><div><div class="strong">Unpublished changes</div><div class="cell-sub">Needs publishing</div></div></div>
-          </div>
-          <div class="template-section">
-            <div>
-              <h2 class="section-title small">Start from a template</h2>
-              <div class="section-kicker">Use a starter structure when building from scratch feels too open-ended.</div>
-            </div>
-            <div class="template-grid">
-              ${templates.map((template) => `
-                <article class="template-card">
-                  <div>
-                    <h3 class="quiz-card-title">${escapeHtml(template.title)}</h3>
-                    <p class="quiz-card-body">${escapeHtml(template.body)}</p>
-                  </div>
-                  <button class="button secondary" data-action="create-template" data-template="${template.id}">${escapeHtml(template.action)}</button>
-                </article>
-              `).join("")}
-            </div>
           </div>
           <div class="library-divider"></div>
           <div class="card-grid">
@@ -2203,6 +2224,7 @@ function renderEditorHome() {
           </div>
         </div>
       </div>
+      ${templateModalOpen ? renderTemplateModal() : ""}
     </section>
   `;
 }
@@ -2576,8 +2598,7 @@ function renderAnalytics() {
         <div class="panel">
           <div class="panel-header">
             <div>
-              <h2 class="section-title small">Problematic questions</h2>
-              <div class="section-kicker">Canonical answer text is shown instead of option letters.</div>
+              <h2 class="section-title small">Questions</h2>
             </div>
           </div>
           <div class="panel-body">
@@ -3893,6 +3914,11 @@ function handleClick(event) {
     render();
     return;
   }
+  if (event.target.dataset.modalBackdrop === "template") {
+    templateModalOpen = false;
+    render();
+    return;
+  }
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
@@ -4136,7 +4162,16 @@ function handleClick(event) {
   if (action === "create-quiz") {
     createNewQuiz();
   }
+  if (action === "open-template-modal") {
+    templateModalOpen = true;
+    render();
+  }
+  if (action === "close-template-modal") {
+    templateModalOpen = false;
+    render();
+  }
   if (action === "create-template") {
+    templateModalOpen = false;
     createNewQuiz(button.dataset.template || "blank");
   }
   if (action === "duplicate-quiz") {

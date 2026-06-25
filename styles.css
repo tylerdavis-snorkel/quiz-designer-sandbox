@@ -1195,6 +1195,10 @@ tr:last-child td {
   width: min(520px, 100%);
 }
 
+.modal-card.template-modal-card {
+  width: min(860px, 100%);
+}
+
 .modal-header {
   position: sticky;
   top: 0;
