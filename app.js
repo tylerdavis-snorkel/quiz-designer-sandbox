@@ -1057,6 +1057,10 @@ function activeTourDemo() {
   return activeTourStep()?.demo || "";
 }
 
+function setTourTransition(active) {
+  document.body.dataset.tourTransition = active ? "true" : "false";
+}
+
 function syncTourView() {
   const step = activeTourStep();
   if (!step) return;
@@ -1087,6 +1091,7 @@ function syncTourView() {
 
 function startAdminTour() {
   if (!isAdmin()) return;
+  setTourTransition(true);
   tourState = { active: true, index: 0 };
   syncTourView();
   render();
@@ -1094,6 +1099,7 @@ function startAdminTour() {
 
 function nextTourStep() {
   if (!tourState.active) return;
+  setTourTransition(true);
   if (tourState.index >= ADMIN_TOUR_STEPS.length - 1) {
     exitTour();
     render();
@@ -1106,6 +1112,7 @@ function nextTourStep() {
 
 function previousTourStep() {
   if (!tourState.active || tourState.index <= 0) return;
+  setTourTransition(true);
   tourState = { active: true, index: tourState.index - 1 };
   syncTourView();
   render();
@@ -1113,6 +1120,7 @@ function previousTourStep() {
 
 function exitTour() {
   tourState = { active: false, index: 0 };
+  setTourTransition(false);
 }
 
 function renderTourOverlay() {
@@ -1158,6 +1166,7 @@ function positionTourOverlay() {
     card.style.transform = "translate(-50%, -50%)";
     overlay.classList.remove("is-positioning");
     overlay.classList.add("is-ready");
+    setTourTransition(false);
     return;
   }
   overlay.classList.remove("is-general");
@@ -1204,6 +1213,7 @@ function positionTourOverlay() {
     arrow.style.display = "none";
     overlay.classList.remove("is-positioning");
     overlay.classList.add("is-ready");
+    setTourTransition(false);
   });
 }
 
@@ -1213,6 +1223,7 @@ function render() {
   document.body.dataset.tourActive = tourState.active && isAdmin() ? "true" : "false";
   if (!isAdmin()) {
     tourState = { active: false, index: 0 };
+    setTourTransition(false);
   }
   if (!isAdmin() && ["admin", "offboarding", "editor", "analytics"].includes(view)) {
     view = "contributor";
@@ -4208,6 +4219,11 @@ function removeQuestionImage(quizId, questionId, imageId) {
 }
 
 function handleClick(event) {
+  if (event.target.dataset.tourOverlay !== undefined) {
+    exitTour();
+    render();
+    return;
+  }
   if (event.target.dataset.modalBackdrop === "attempt") {
     selectedAttemptId = null;
     render();
@@ -4294,6 +4310,7 @@ function handleClick(event) {
   }
   if (action === "nav") {
     tourState = { active: false, index: 0 };
+    setTourTransition(false);
     if (!isAdmin() && button.dataset.view !== "contributor") return;
     if (button.dataset.view !== view) {
       selectedAttemptId = null;
@@ -4967,7 +4984,15 @@ function changeResult(assignmentId) {
   render();
 }
 
+function handleKeydown(event) {
+  if (event.key === "Escape" && tourState.active) {
+    exitTour();
+    render();
+  }
+}
+
 document.addEventListener("click", handleClick);
+document.addEventListener("keydown", handleKeydown);
 document.addEventListener("input", handleInput);
 document.addEventListener("change", handleChange);
 document.addEventListener("dragstart", handleDragStart);

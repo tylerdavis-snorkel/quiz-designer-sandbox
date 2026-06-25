@@ -79,6 +79,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+body[data-tour-transition="true"]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+  background: rgba(10, 18, 32, 0.62);
+  pointer-events: none;
+}
+
 body[data-view="take"] {
   background:
     linear-gradient(180deg, #f8fbff 0%, #f4f7fc 44%, #f9fbff 100%);
