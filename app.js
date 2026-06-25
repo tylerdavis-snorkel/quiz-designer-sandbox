@@ -1214,10 +1214,7 @@ function renderContributorHistoryDetail() {
 }
 
 function renderAdmin() {
-  if (filters.metricQuiz !== "All" && !quiz(filters.metricQuiz)) filters.metricQuiz = "All";
   const rows = filteredAdminRows();
-  const stats = adminStats();
-  const metricTitle = filters.metricQuiz === "All" ? "All quizzes" : quiz(filters.metricQuiz)?.title || "All quizzes";
   return `
     <section class="content admin-content">
       <div class="admin-dashboard-grid">
@@ -1227,37 +1224,6 @@ function renderAdmin() {
           events: contributorQuizAuditEvents()
         })}
         <div class="admin-main">
-          <div class="metrics-toolbar">
-            <div>
-              <h1 class="section-title">Overview</h1>
-              <div class="section-kicker">${escapeHtml(metricTitle)}</div>
-            </div>
-            <div class="field metric-select">
-              <label for="metric-quiz">Quiz</label>
-              <select id="metric-quiz" class="select" data-filter="metricQuiz">
-                <option>All</option>
-                ${state.quizzes.map((itemQuiz) => `<option value="${itemQuiz.id}" ${filters.metricQuiz === itemQuiz.id ? "selected" : ""}>${escapeHtml(itemQuiz.title)}</option>`).join("")}
-              </select>
-            </div>
-          </div>
-          <div class="stat-grid">
-            <div class="stat">
-              <div class="stat-label">Passed</div>
-              <div class="stat-value">${stats.passed}</div>
-            </div>
-            <div class="stat">
-              <div class="stat-label">Failed</div>
-              <div class="stat-value">${stats.failed}</div>
-            </div>
-            <div class="stat">
-              <div class="stat-label">In progress</div>
-              <div class="stat-value">${stats.inProgress}</div>
-            </div>
-            <div class="stat">
-              <div class="stat-label">Not started</div>
-              <div class="stat-value">${stats.notStarted}</div>
-            </div>
-          </div>
           ${renderAdminSubTabs()}
           ${adminSubView === "responses" ? renderAdminReviewCallout() : ""}
           ${adminSubView === "written" ? renderWrittenScoringPanel() : `
@@ -1393,14 +1359,10 @@ function auditIconSvg(type) {
 }
 
 function renderAdminSubTabs() {
-  const writtenCount = pendingWrittenReviewRows().length;
   return `
     <div class="subtabs" aria-label="Admin sections">
       <button class="subtab ${adminSubView === "responses" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="responses">Responses</button>
-      <button class="subtab ${adminSubView === "written" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="written">
-        Admin review
-        ${writtenCount ? `<span class="pending-count" aria-label="${writtenCount} pending">${writtenCount}</span>` : ""}
-      </button>
+      <button class="subtab ${adminSubView === "written" ? "is-active" : ""}" data-action="admin-subtab" data-admin-subtab="written">Admin review</button>
     </div>
   `;
 }
@@ -1780,6 +1742,49 @@ function adminStats() {
     inProgress: allRows.filter((row) => row.status === "In progress").length,
     notStarted: allRows.filter((row) => row.status === "Not started").length
   };
+}
+
+function renderAnalyticsOverview() {
+  if (filters.metricQuiz !== "All" && !quiz(filters.metricQuiz)) filters.metricQuiz = "All";
+  const stats = adminStats();
+  const metricTitle = filters.metricQuiz === "All" ? "All quizzes" : quiz(filters.metricQuiz)?.title || "All quizzes";
+  return `
+    <div class="panel">
+      <div class="panel-body">
+        <div class="metrics-toolbar">
+          <div>
+            <h1 class="section-title">Overview</h1>
+            <div class="section-kicker">${escapeHtml(metricTitle)}</div>
+          </div>
+          <div class="field metric-select">
+            <label for="metric-quiz">Quiz</label>
+            <select id="metric-quiz" class="select" data-filter="metricQuiz">
+              <option>All</option>
+              ${state.quizzes.map((itemQuiz) => `<option value="${itemQuiz.id}" ${filters.metricQuiz === itemQuiz.id ? "selected" : ""}>${escapeHtml(itemQuiz.title)}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="stat-label">Passed</div>
+            <div class="stat-value">${stats.passed}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Failed</div>
+            <div class="stat-value">${stats.failed}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">In progress</div>
+            <div class="stat-value">${stats.inProgress}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Not started</div>
+            <div class="stat-value">${stats.notStarted}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderFilters() {
@@ -2508,6 +2513,7 @@ function renderAnalytics() {
           <button class="button secondary" data-action="export-analytics-csv" data-quiz-id="${itemQuiz.id}">Export CSV</button>
         </div>
       </div>
+      ${renderAnalyticsOverview()}
       <div class="analytics-grid">
         <div class="panel">
           <div class="panel-header">
