@@ -650,7 +650,7 @@ const ADMIN_TOUR_STEPS = [
   {
     view: "admin",
     subtab: "responses",
-    target: "contributor-log",
+    target: "contributor-log-title",
     title: "Contributor log",
     body: "This log shows contributor quiz activity for the current admin view, including retake changes, locks, scoring updates, notes, and attempt review actions."
   },
@@ -711,7 +711,7 @@ const ADMIN_TOUR_STEPS = [
   },
   {
     view: "offboarding",
-    target: "offboarding-log",
+    target: "offboarding-log-title",
     demo: "restored",
     title: "Offboarding log",
     body: "The log tracks both offboarding and restored access. These tour entries are examples only and disappear when the tour moves on."
@@ -1095,7 +1095,7 @@ function startAdminTour() {
 function nextTourStep() {
   if (!tourState.active) return;
   if (tourState.index >= ADMIN_TOUR_STEPS.length - 1) {
-    tourState = { active: false, index: 0 };
+    exitTour();
     render();
     return;
   }
@@ -1104,10 +1104,22 @@ function nextTourStep() {
   render();
 }
 
+function previousTourStep() {
+  if (!tourState.active || tourState.index <= 0) return;
+  tourState = { active: true, index: tourState.index - 1 };
+  syncTourView();
+  render();
+}
+
+function exitTour() {
+  tourState = { active: false, index: 0 };
+}
+
 function renderTourOverlay() {
   const step = activeTourStep();
   if (!step) return "";
   const isLast = tourState.index >= ADMIN_TOUR_STEPS.length - 1;
+  const isFirst = tourState.index === 0;
   return `
     <div class="tour-overlay ${step.target ? "" : "is-general"}" data-tour-overlay data-tour-target="${escapeHtml(step.target || "")}">
       <div class="tour-spotlight" data-tour-spotlight></div>
@@ -1117,7 +1129,11 @@ function renderTourOverlay() {
         <h2>${escapeHtml(step.title)}</h2>
         <p>${escapeHtml(step.body)}</p>
         <div class="tour-card-footer">
-          <button class="tour-next" data-action="next-tour-step" aria-label="${isLast ? "Finish tour" : "Next tour step"}">${isLast ? "Done" : "→"}</button>
+          <button class="tour-text-button" data-action="exit-tour">Exit</button>
+          <div class="tour-card-controls">
+            <button class="tour-text-button" data-action="previous-tour-step" ${isFirst ? "disabled" : ""}>Back</button>
+            <button class="tour-next" data-action="next-tour-step" aria-label="${isLast ? "Finish tour" : "Next tour step"}">${isLast ? "Done" : "→"}</button>
+          </div>
         </div>
       </aside>
     </div>
@@ -1158,26 +1174,30 @@ function positionTourOverlay() {
     spotlight.style.height = `${height}px`;
     const cardWidth = Math.min(360, window.innerWidth - 32);
     const cardHeight = card.offsetHeight || 220;
-    const spaceBelow = window.innerHeight - (top + height);
-    const cardTop = spaceBelow > cardHeight + 36 ? top + height + 24 : Math.max(16, top - cardHeight - 24);
-    const cardLeft = Math.min(window.innerWidth - cardWidth - 16, Math.max(16, left + width / 2 - cardWidth / 2));
+    const gap = 18;
+    const roomRight = window.innerWidth - (left + width);
+    const roomLeft = left;
+    const roomBelow = window.innerHeight - (top + height);
+    let cardLeft;
+    let cardTop;
+    if (roomRight >= cardWidth + gap + 16) {
+      cardLeft = left + width + gap;
+      cardTop = Math.min(window.innerHeight - cardHeight - 16, Math.max(16, top + height / 2 - cardHeight / 2));
+    } else if (roomLeft >= cardWidth + gap + 16) {
+      cardLeft = left - cardWidth - gap;
+      cardTop = Math.min(window.innerHeight - cardHeight - 16, Math.max(16, top + height / 2 - cardHeight / 2));
+    } else if (roomBelow >= cardHeight + gap + 16) {
+      cardLeft = Math.min(window.innerWidth - cardWidth - 16, Math.max(16, left + width / 2 - cardWidth / 2));
+      cardTop = top + height + gap;
+    } else {
+      cardLeft = Math.min(window.innerWidth - cardWidth - 16, Math.max(16, left + width / 2 - cardWidth / 2));
+      cardTop = Math.max(16, top - cardHeight - gap);
+    }
     card.style.width = `${cardWidth}px`;
     card.style.left = `${cardLeft}px`;
     card.style.top = `${cardTop}px`;
     card.style.transform = "none";
-    const startX = cardLeft + cardWidth / 2;
-    const startY = cardTop < top ? cardTop + cardHeight : cardTop;
-    const endX = left + width / 2;
-    const endY = top + height / 2;
-    const deltaX = endX - startX;
-    const deltaY = endY - startY;
-    const length = Math.max(30, Math.hypot(deltaX, deltaY));
-    const angle = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
-    arrow.style.display = "block";
-    arrow.style.left = `${startX}px`;
-    arrow.style.top = `${startY}px`;
-    arrow.style.width = `${length}px`;
-    arrow.style.transform = `rotate(${angle}deg)`;
+    arrow.style.display = "none";
   });
 }
 
@@ -1517,11 +1537,11 @@ function renderAdmin() {
 
 function renderAuditLogCard({ title = "Audit log", kicker = "Recent activity across the current view.", events = state.audit || [], showViewAll = true, tourId = "" } = {}) {
   return `
-    <aside class="panel audit-card" ${tourId ? `data-tour="${escapeHtml(tourId)}"` : ""}>
+    <aside class="panel audit-card">
       <div class="audit-card-header">
         <div class="audit-card-icon">${auditIconSvg("log")}</div>
         <div>
-          <h2 class="section-title small">${escapeHtml(title)}</h2>
+          <h2 class="section-title small" ${tourId ? `data-tour="${escapeHtml(tourId)}-title"` : ""}>${escapeHtml(title)}</h2>
           <div class="section-kicker">${escapeHtml(kicker)}</div>
         </div>
       </div>
@@ -1726,11 +1746,11 @@ function renderOffboardingPanel() {
         </div>
         <div style="height: 14px;"></div>
         <div class="offboarding-grid">
-          <aside class="panel audit-card offboarding-log-card" data-tour="offboarding-log">
+          <aside class="panel audit-card offboarding-log-card">
             <div class="audit-card-header">
               <div class="audit-card-icon">${auditIconSvg("shield")}</div>
               <div>
-                <h2 class="section-title small">Offboarding log</h2>
+                <h2 class="section-title small" data-tour="offboarding-log-title">Offboarding log</h2>
                 <div class="section-kicker">Tracks both offboarding and restored access.</div>
               </div>
             </div>
@@ -4255,6 +4275,15 @@ function handleClick(event) {
   }
   if (action === "next-tour-step") {
     nextTourStep();
+    return;
+  }
+  if (action === "previous-tour-step") {
+    previousTourStep();
+    return;
+  }
+  if (action === "exit-tour") {
+    exitTour();
+    render();
     return;
   }
   if (action === "nav") {

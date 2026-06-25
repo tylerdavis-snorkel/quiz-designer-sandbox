@@ -1324,7 +1324,37 @@ tr:last-child td {
 .tour-card-footer {
   margin-top: 14px;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tour-card-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tour-text-button {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: var(--weight-semibold);
+}
+
+.tour-text-button:hover {
+  background: var(--blue-soft);
+}
+
+.tour-text-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .tour-next {
@@ -1344,24 +1374,11 @@ tr:last-child td {
 }
 
 .tour-arrow {
-  position: fixed;
-  z-index: 81;
-  height: 2px;
-  background: var(--blue);
-  transform-origin: left center;
-  pointer-events: none;
+  display: none;
 }
 
 .tour-arrow::after {
-  content: "";
-  position: absolute;
-  right: -1px;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  border-top: 2px solid var(--blue);
-  border-right: 2px solid var(--blue);
-  transform: translateY(-50%) rotate(45deg);
+  display: none;
 }
 
 .tour-demo-row {
