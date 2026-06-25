@@ -22,6 +22,12 @@ To host the sandbox:
 
 This is safe for a prototype or stakeholder demo. It is not enough for production with real contractors because GitHub Pages cannot securely store scores, emails, audit logs, admin permissions, or quiz attempts. Production should pair this front end with a real backend and database.
 
+## Security Status
+
+This sandbox uses fake sample data only. Do not put real contributor emails, real assessment answer keys, real scores, real admin notes, or real audit logs in this static GitHub Pages build.
+
+See `SECURITY.md` for the full security notes and launch checklist. The important rule is simple: real answers and real contributor data must live behind an authenticated backend, not inside public front-end JavaScript.
+
 ## Product Decisions Captured
 
 - Contributors are contractors.
