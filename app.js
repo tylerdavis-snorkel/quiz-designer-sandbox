@@ -1121,7 +1121,7 @@ function renderTourOverlay() {
   const isLast = tourState.index >= ADMIN_TOUR_STEPS.length - 1;
   const isFirst = tourState.index === 0;
   return `
-    <div class="tour-overlay ${step.target ? "" : "is-general"}" data-tour-overlay data-tour-target="${escapeHtml(step.target || "")}">
+    <div class="tour-overlay ${step.target ? "" : "is-general"} is-positioning" data-tour-overlay data-tour-target="${escapeHtml(step.target || "")}">
       <div class="tour-spotlight" data-tour-spotlight></div>
       <div class="tour-arrow" data-tour-arrow aria-hidden="true"></div>
       <aside class="tour-card" data-tour-card role="dialog" aria-live="polite">
@@ -1156,9 +1156,13 @@ function positionTourOverlay() {
     card.style.left = "50%";
     card.style.top = "50%";
     card.style.transform = "translate(-50%, -50%)";
+    overlay.classList.remove("is-positioning");
+    overlay.classList.add("is-ready");
     return;
   }
   overlay.classList.remove("is-general");
+  overlay.classList.add("is-positioning");
+  overlay.classList.remove("is-ready");
   target.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
   requestAnimationFrame(() => {
     const rect = target.getBoundingClientRect();
@@ -1198,6 +1202,8 @@ function positionTourOverlay() {
     card.style.top = `${cardTop}px`;
     card.style.transform = "none";
     arrow.style.display = "none";
+    overlay.classList.remove("is-positioning");
+    overlay.classList.add("is-ready");
   });
 }
 
