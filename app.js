@@ -744,7 +744,7 @@ const ADMIN_TOUR_STEPS = [
     view: "editor",
     target: "course-more-actions",
     title: "More actions",
-    body: "The three-dot menu keeps less common actions tucked away, including duplicate and delete."
+    body: "The three-dot menu keeps less common actions tucked away, including download, duplicate, and delete."
   },
   {
     view: "analytics",
@@ -2528,7 +2528,9 @@ function renderEditorHome() {
           </div>
           <div class="row-actions">
             <button class="button secondary" data-action="open-template-modal" data-tour="start-template">Start from template</button>
+            <button class="button secondary" data-action="trigger-course-upload">Upload course</button>
             <button class="button" data-action="create-quiz" data-tour="create-blank-course">Create blank course</button>
+            <input type="file" accept="application/json,.json" data-course-package-upload style="display: none;">
           </div>
         </div>
         <div class="panel-body">
@@ -2559,6 +2561,7 @@ function renderEditorHome() {
                     <div class="card-menu">
                       <button class="button secondary menu-trigger" type="button" aria-label="More quiz actions" ${index === 0 ? `data-tour="course-more-actions"` : ""}>...</button>
                       <div class="card-menu-panel" role="menu">
+                        <button type="button" data-action="download-quiz-package" data-quiz-id="${itemQuiz.id}">Download</button>
                         <button type="button" data-action="duplicate-quiz" data-quiz-id="${itemQuiz.id}">Duplicate</button>
                         <button type="button" class="danger-menu-item" data-action="delete-quiz" data-quiz-id="${itemQuiz.id}">Delete</button>
                       </div>
@@ -3747,34 +3750,38 @@ function insertContentAfter(quizId, afterKey, kind) {
   render();
 }
 
-function duplicateQuiz(quizId) {
-  const source = quiz(quizId);
+function cloneQuizForLibrary(source, options = {}) {
   if (!source) return;
   const id = uniqueId("q");
   const pageIdMap = new Map();
   const questionIdMap = new Map();
   const answerIdMap = new Map();
-  const coursePages = source.coursePages.map((page) => {
+  const sourcePages = Array.isArray(source.coursePages) ? source.coursePages : [];
+  const sourceQuestions = Array.isArray(source.questions) ? source.questions : [];
+  const coursePages = sourcePages.map((page) => {
     const nextId = uniqueId("cp");
     pageIdMap.set(page.id, nextId);
     return {
-      ...page,
-      id: nextId
+      ...cloneValue(page),
+      id: nextId,
+      title: page.title || "",
+      body: page.body || "",
+      bodyHtml: page.bodyHtml || "<p><br></p>"
     };
   });
-  const questions = source.questions.map((question) => {
+  const questions = sourceQuestions.map((question) => {
     const nextQuestionId = uniqueId("qst");
     questionIdMap.set(question.id, nextQuestionId);
     const answers = (question.answers || []).map((answer) => {
       const nextAnswerId = uniqueId("ans");
       answerIdMap.set(answer.id, nextAnswerId);
       return {
-        ...answer,
+        ...cloneValue(answer),
         id: nextAnswerId
       };
     });
     return normalizeQuestionByType({
-      ...question,
+      ...cloneValue(question),
       id: nextQuestionId,
       answers,
       correctOrder: (question.correctOrder || []).map((answerId) => answerIdMap.get(answerId)).filter(Boolean),
@@ -3790,22 +3797,91 @@ function duplicateQuiz(quizId) {
       return nextId ? contentKey(kind, nextId) : null;
     }).filter(Boolean)
   });
-  const copy = {
-    ...source,
+  return {
+    ...cloneValue(source),
     id,
-    title: `Copy of ${source.title}`,
-    status: "Draft",
-    draftDirty: true,
+    title: options.title || `Copy of ${source.title || "Imported course"}`,
+    project: PROJECT_NAME,
+    status: options.status || "Draft",
+    draftDirty: options.draftDirty ?? true,
+    guidelinesUrl: source.guidelinesUrl || "",
+    passThreshold: Number(source.passThreshold) || 80,
+    retakeLimit: Number(source.retakeLimit) || 0,
+    unlimitedRetakes: Boolean(source.unlimitedRetakes),
+    estimatedMinutes: Number(source.estimatedMinutes) || 15,
+    randomizeQuestions: source.randomizeQuestions !== false,
+    randomizeAnswers: source.randomizeAnswers !== false,
+    projectActive: source.projectActive !== false,
     coursePages,
     questions,
     contentOrder
   };
+}
+
+function duplicateQuiz(quizId) {
+  const source = quiz(quizId);
+  if (!source) return;
+  const copy = cloneQuizForLibrary(source);
   state.quizzes.unshift(copy);
-  selectedQuizId = id;
+  selectedQuizId = copy.id;
   editorMode = "detail";
   editorReadOnly = false;
-  captureEditorSnapshot(id);
+  captureEditorSnapshot(copy.id);
   addAudit("Quiz duplicated", `${source.title} -> ${copy.title}`);
+  render();
+}
+
+function safeFileSlug(value) {
+  return String(value || "course").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "course";
+}
+
+function downloadQuizPackage(quizId) {
+  const itemQuiz = quiz(quizId);
+  if (!itemQuiz) return;
+  const packageData = {
+    schema: "project-otter-course-package",
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    exportedBy: currentUser()?.email || "admin",
+    note: "Admin-only package. Includes course content, quiz questions, answer choices, correct answers, settings, ordering, and embedded image data.",
+    quiz: cloneValue(itemQuiz)
+  };
+  const blob = new Blob([JSON.stringify(packageData, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `project-otter-course-${safeFileSlug(itemQuiz.title)}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  addAudit("Course package downloaded", itemQuiz.title);
+}
+
+async function importQuizPackage(file) {
+  if (!file) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(await file.text());
+  } catch (error) {
+    alert("That file could not be read. Upload a Project Otter course package JSON file.");
+    return;
+  }
+  const source = parsed?.quiz || parsed;
+  if (!source || typeof source !== "object" || !Array.isArray(source.coursePages) || !Array.isArray(source.questions)) {
+    alert("That file is not a valid Project Otter course package.");
+    return;
+  }
+  const copy = cloneQuizForLibrary(source, {
+    title: `Copy of ${source.title || file.name.replace(/\.json$/i, "")}`,
+    status: "Draft",
+    draftDirty: true
+  });
+  state.quizzes.unshift(copy);
+  selectedQuizId = copy.id;
+  editorMode = "detail";
+  editorReadOnly = false;
+  templateModalOpen = false;
+  captureEditorSnapshot(copy.id);
+  addAudit("Course package uploaded", `${file.name} -> ${copy.title}`);
   render();
 }
 
@@ -4544,6 +4620,12 @@ function handleClick(event) {
     templateModalOpen = false;
     createNewQuiz(button.dataset.template || "blank");
   }
+  if (action === "trigger-course-upload") {
+    document.querySelector("[data-course-package-upload]")?.click();
+  }
+  if (action === "download-quiz-package") {
+    downloadQuizPackage(button.dataset.quizId);
+  }
   if (action === "duplicate-quiz") {
     duplicateQuiz(button.dataset.quizId);
   }
@@ -4750,6 +4832,7 @@ function handleChange(event) {
     target.dataset.questionField ||
     target.dataset.courseImageUpload ||
     target.dataset.questionImageUpload ||
+    target.dataset.coursePackageUpload !== undefined ||
     target.dataset.answerCorrect ||
     target.dataset.action === "rich-font" ||
     target.dataset.action === "rich-size" ||
@@ -4777,6 +4860,10 @@ function handleChange(event) {
   }
   if (target.dataset.questionImageUpload) {
     uploadQuestionImages(target.dataset.quizId, target.dataset.questionImageUpload, target.files);
+    target.value = "";
+  }
+  if (target.dataset.coursePackageUpload !== undefined) {
+    importQuizPackage(target.files?.[0]);
     target.value = "";
   }
   if (target.dataset.answerCorrect) {
