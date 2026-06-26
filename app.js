@@ -1269,47 +1269,53 @@ function renderShell(content) {
   }[view];
   return `
     <div class="app-shell">
-      <main class="main">
-        <header class="topbar">
-          <div class="topbar-heading">
-            <div>
-              <div class="topbar-title">${escapeHtml(title)}</div>
-              <div class="topbar-subtitle">${escapeHtml(subtitle)}</div>
-              <div class="topbar-meta">${escapeHtml(current.name)} - ${escapeHtml(current.email)} - ${isAdmin(current) ? "Admin" : "Contributor"}</div>
+      <header class="topbar">
+        <div class="topbar-heading">
+          <div class="brand-help-stack">
+            <div class="brand-logo" aria-label="Snorkel">
+              <img src="https://s46486.pcdn.co/wp-content/uploads/2023/05/snorkel_logo_header-1.svg" alt="Snorkel">
             </div>
+            ${isAdmin(current) ? `<button class="tour-help-text" data-action="start-admin-tour">Need help navigating?</button>` : ""}
           </div>
-          <div class="topbar-actions">
-            <div class="brand-help-stack">
-              <div class="brand-logo" aria-label="Snorkel">
-                <img src="https://s46486.pcdn.co/wp-content/uploads/2023/05/snorkel_logo_header-1.svg" alt="Snorkel">
-              </div>
-              ${isAdmin(current) ? `<button class="tour-help-text" data-action="start-admin-tour">Need help navigating?</button>` : ""}
-            </div>
-            <select class="select" data-action="switch-contributor" aria-label="Current contributor">
-              ${state.contributors.map((person) => `
-                <option value="${person.id}" ${person.id === state.currentContributorId ? "selected" : ""}>
-                  ${escapeHtml(person.name)} (${person.role === "admin" ? "Admin" : "Contributor"})
-                </option>
-              `).join("")}
-            </select>
-            ${isAdmin(current) ? `<button class="button secondary" data-action="open-make-admin">Admin access</button>` : ""}
-            <button class="button secondary" data-action="toggle-theme">${state.theme === "dark" ? "Light mode" : "Dark mode"}</button>
-            <button class="button ghost" data-action="reset-sandbox">Reset sandbox</button>
-          </div>
-        </header>
+        </div>
+        <div class="topbar-actions">
+          <select class="select" data-action="switch-contributor" aria-label="Current contributor">
+            ${state.contributors.map((person) => `
+              <option value="${person.id}" ${person.id === state.currentContributorId ? "selected" : ""}>
+                ${escapeHtml(person.name)} (${person.role === "admin" ? "Admin" : "Contributor"})
+              </option>
+            `).join("")}
+          </select>
+          ${isAdmin(current) ? `<button class="button secondary" data-action="open-make-admin">Admin access</button>` : ""}
+          <button class="button secondary" data-action="toggle-theme">${state.theme === "dark" ? "Light mode" : "Dark mode"}</button>
+          <button class="button ghost" data-action="reset-sandbox">Reset sandbox</button>
+        </div>
+      </header>
+      <div class="shell-grid">
         <nav class="top-nav" aria-label="Main">
+          <div class="nav-section-label">Main</div>
           ${navButton("contributor", "Contributor")}
           ${isAdmin(current) ? `
+            <div class="nav-section-label admin-label">Admin</div>
             ${navButton("admin", "Contributor overview")}
             ${navButton("offboarding", "Offboarding")}
             ${navButton("editor", "Course library")}
             ${navButton("analytics", "Analytics")}
           ` : ""}
         </nav>
+        <main class="main">
+          <section class="page-titlebar">
+            <div>
+              <div class="topbar-title">${escapeHtml(title)}</div>
+              <div class="topbar-subtitle">${escapeHtml(subtitle)}</div>
+              <div class="topbar-meta">${escapeHtml(current.name)} - ${escapeHtml(current.email)} - ${isAdmin(current) ? "Admin" : "Contributor"}</div>
+            </div>
+          </section>
         ${content}
         ${makeAdminOpen ? renderAdminAccessModal() : ""}
         ${renderTourOverlay()}
       </main>
+      </div>
     </div>
   `;
 }
