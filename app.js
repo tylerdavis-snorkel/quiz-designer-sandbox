@@ -600,17 +600,14 @@ function contentPosition(itemQuiz, key, kind) {
 }
 
 function markQuizChanged(itemQuiz, action = "Assessment edited") {
-  itemQuiz.draftDirty = true;
-  itemQuiz.status = itemQuiz.status === "Published" ? "Published" : "Draft";
+  const isDirty = hasMeaningfulEditorChanges(itemQuiz);
+  itemQuiz.draftDirty = isDirty;
+  itemQuiz.status = isDirty
+    ? (itemQuiz.status === "Published" ? "Published" : "Draft")
+    : (editorSnapshot?.quizId === itemQuiz.id ? editorSnapshot.quiz.status : itemQuiz.status);
   saveState();
-  const publishButton = document.querySelector(`button[data-action="publish-quiz"][data-quiz-id="${itemQuiz.id}"]`);
-  if (publishButton) {
-    publishButton.disabled = false;
-    publishButton.textContent = "Publish changes";
-  }
-  const dirtyBadge = document.querySelector(`[data-dirty-badge="${itemQuiz.id}"]`);
-  if (dirtyBadge) dirtyBadge.textContent = "Unpublished changes";
-  if (action) addAudit(action, itemQuiz.title);
+  syncDirtyIndicators(itemQuiz);
+  if (action && isDirty) addAudit(action, itemQuiz.title);
 }
 
 function escapeHtml(value) {
@@ -776,6 +773,37 @@ function captureEditorSnapshot(quizId) {
     assignments: cloneValue(state.assignments),
     contributors: cloneValue(state.contributors)
   };
+}
+
+function comparableQuizSnapshot(itemQuiz) {
+  const snapshot = normalizeQuiz(cloneValue(itemQuiz));
+  delete snapshot.draftDirty;
+  return snapshot;
+}
+
+function hasMeaningfulEditorChanges(itemQuiz) {
+  if (!editorSnapshot || editorSnapshot.quizId !== itemQuiz.id) return true;
+  if (editorSnapshot.quiz?.draftDirty) return true;
+  return JSON.stringify(comparableQuizSnapshot(itemQuiz)) !== JSON.stringify(comparableQuizSnapshot(editorSnapshot.quiz));
+}
+
+function syncDirtyIndicators(itemQuiz) {
+  const isDirty = Boolean(itemQuiz.draftDirty);
+  const publishButton = document.querySelector(`button[data-action="publish-quiz"][data-quiz-id="${itemQuiz.id}"]`);
+  if (publishButton) {
+    publishButton.disabled = !isDirty;
+    publishButton.textContent = isDirty ? "Publish changes" : "Publish content";
+  }
+  document.querySelectorAll(`[data-dirty-badge="${itemQuiz.id}"]`).forEach((dirtyBadge) => {
+    dirtyBadge.textContent = isDirty ? "Unpublished changes" : itemQuiz.status;
+    dirtyBadge.className = `status ${isDirty ? "retake-available" : itemQuiz.status === "Published" ? "qualified" : "submitted"}`;
+  });
+}
+
+function syncCourseTitleInputs(quizId, pageId, value, sourceTarget) {
+  document.querySelectorAll(`[data-course-field="title"][data-quiz-id="${quizId}"][data-page-id="${pageId}"]`).forEach((input) => {
+    if (input !== sourceTarget) input.value = value;
+  });
 }
 
 function discardEditorChanges() {
@@ -2351,7 +2379,7 @@ function renderEditor() {
                 <div class="strong">Publishing and assign course</div>
                 <div class="cell-sub">Publishing saves the assessment content. Assigning pushes it to contributor dashboards.</div>
                 <div class="pill-row">
-                  <span class="status ${itemQuiz.draftDirty ? "retake-available" : "qualified"}">${itemQuiz.draftDirty ? "Unpublished changes" : "Content published"}</span>
+                  <span class="status ${itemQuiz.draftDirty ? "retake-available" : "qualified"}" data-dirty-badge="${itemQuiz.id}">${itemQuiz.draftDirty ? "Unpublished changes" : "Content published"}</span>
                   <span class="status ${assignedCount ? "qualified" : "locked"}">${assignedCount} course assignment${assignedCount === 1 ? "" : "s"}</span>
                 </div>
               </div>
@@ -2685,12 +2713,20 @@ function renderInsertMenu(itemQuiz, key) {
 }
 
 function renderCourseEditorBlock(itemQuiz, page, key, position, index, total) {
+  const title = page.title || "Untitled course page";
   return `
     <div class="builder-item draggable-item ${editorReadOnly ? "is-readonly" : ""}" data-content-key="${key}" data-quiz-id="${itemQuiz.id}">
       <div class="builder-top">
         <div>
           <div class="builder-label">${editorReadOnly ? "" : `<span class="drag-handle" draggable="true" aria-label="Drag course page">::</span>`} Course page ${position.index} of ${position.total}</div>
-          <h3 class="builder-title">${escapeHtml(page.title || "Untitled course page")}</h3>
+          ${editorReadOnly ? `
+            <h3 class="builder-title">${escapeHtml(title)}</h3>
+          ` : `
+            <label class="builder-title-edit">
+              <span class="title-pencil" aria-hidden="true">✎</span>
+              <input class="builder-title-input" value="${escapeHtml(title)}" data-course-field="title" data-quiz-id="${itemQuiz.id}" data-page-id="${page.id}" aria-label="Course page title">
+            </label>
+          `}
         </div>
         <div class="row-actions">
           <span class="status not-started">Training</span>
@@ -4769,6 +4805,7 @@ function handleInput(event) {
     const page = getCoursePage(itemQuiz, target.dataset.pageId);
     if (page) {
       page[target.dataset.courseField] = target.value;
+      if (target.dataset.courseField === "title") syncCourseTitleInputs(itemQuiz.id, page.id, page.title, target);
       markQuizChanged(itemQuiz, null);
     }
   }

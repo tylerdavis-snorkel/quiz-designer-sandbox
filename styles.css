@@ -1687,6 +1687,40 @@ tr:last-child td {
   line-height: 1.3;
 }
 
+.builder-title-edit {
+  max-width: min(520px, 100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+
+.title-pencil {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.builder-title-input {
+  min-width: min(360px, 72vw);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: var(--weight-semibold);
+  line-height: 1.3;
+}
+
+.builder-title-edit:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
 .builder-meta {
   margin-top: 8px;
   color: var(--muted);
