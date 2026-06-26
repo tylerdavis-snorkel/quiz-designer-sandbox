@@ -806,6 +806,15 @@ function syncCourseTitleInputs(quizId, pageId, value, sourceTarget) {
   });
 }
 
+function syncQuizTitleInputs(value, sourceTarget) {
+  document.querySelectorAll(`[data-editor-field="title"]`).forEach((input) => {
+    if (input !== sourceTarget) input.value = value;
+  });
+  document.querySelectorAll("[data-quiz-title-display]").forEach((element) => {
+    element.textContent = value;
+  });
+}
+
 function discardEditorChanges() {
   const currentQuiz = quiz(selectedQuizId);
   if (!editorSnapshot || editorSnapshot.quizId !== selectedQuizId || !currentQuiz) {
@@ -1318,9 +1327,9 @@ function renderShell(content) {
           ${navButton("contributor", "Contributor")}
           ${isAdmin(current) ? `
             ${navButton("admin", "Contributor overview")}
-            ${navButton("offboarding", "Offboarding")}
             ${navButton("editor", "Course library")}
             ${navButton("analytics", "Analytics")}
+            ${navButton("offboarding", "Offboarding")}
           ` : ""}
         </nav>
         ${content}
@@ -1661,7 +1670,7 @@ function auditIconType(action) {
 
 function auditIconSvg(type) {
   const paths = {
-    log: `<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M10 12h5"/><path d="M10 16h2"/><circle cx="16.5" cy="16.5" r="3"/><path d="M16.5 14.8v1.9l1.3.8"/>`,
+    log: `<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M10 12h6"/><path d="M10 16h6"/><path d="M10 20h4"/>`,
     file: `<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M10 13h6"/><path d="M10 17h4"/>`,
     mail: `<rect x="4" y="6" width="16" height="12" rx="2"/><path d="m5 7 7 6 7-6"/>`,
     upload: `<path d="M7 17a4 4 0 0 1 1-7.9A5 5 0 0 1 18 10a3.5 3.5 0 0 1-.5 7H15"/><path d="M12 19V11"/><path d="m9 14 3-3 3 3"/>`,
@@ -2338,7 +2347,17 @@ function renderEditor() {
             ${editorReadOnly ? "" : `<button class="button secondary discard-button" data-action="discard-editor-changes">Discard changes</button>`}
             <button class="button secondary discard-button" data-action="open-version-history" data-quiz-id="${itemQuiz.id}">Version history</button>
           </div>
-          <h1 class="section-title">${modeLabel}: ${escapeHtml(itemQuiz.title)}</h1>
+          <div class="editor-title-row">
+            <span class="section-title">${modeLabel}:</span>
+            ${editorReadOnly ? `
+              <h1 class="section-title" data-quiz-title-display>${escapeHtml(itemQuiz.title)}</h1>
+            ` : `
+              <label class="quiz-title-edit">
+                <span class="title-pencil" aria-hidden="true">✎</span>
+                <input class="quiz-title-input" value="${escapeHtml(itemQuiz.title)}" data-editor-field="title" data-quiz-id="${itemQuiz.id}" aria-label="Course title">
+              </label>
+            `}
+          </div>
           <div class="section-kicker">${editorReadOnly ? "Review assessment content before editing." : `One project sandbox: ${escapeHtml(PROJECT_NAME)}. Drag course pages and questions into the order contributors should see them.`}</div>
         </div>
         <div class="editor-detail-actions">
@@ -2555,7 +2574,10 @@ function renderEditorHome() {
             ${state.quizzes.map((itemQuiz, index) => `
               <article class="quiz-card">
                 <div>
-                  <h2 class="quiz-card-title">${escapeHtml(itemQuiz.title)}</h2>
+                  <h2 class="quiz-card-title quiz-card-title-row">
+                    <span>${escapeHtml(itemQuiz.title)}</span>
+                    <button class="title-pencil-button" type="button" data-action="edit-quiz-title" data-quiz-id="${itemQuiz.id}" aria-label="Edit course title">✎</button>
+                  </h2>
                   <div class="quiz-card-meta">
                     <span class="status ${itemQuiz.draftDirty ? "retake-available" : itemQuiz.status === "Published" ? "qualified" : "submitted"}" data-dirty-badge="${itemQuiz.id}">${escapeHtml(itemQuiz.draftDirty ? "Unpublished changes" : itemQuiz.status)}</span>
                     <span class="status ${assignmentCountForQuiz(itemQuiz.id) ? "qualified" : "locked"}">${assignmentCountForQuiz(itemQuiz.id) ? "On dashboards" : "Not on dashboards"}</span>
@@ -4594,10 +4616,10 @@ function handleClick(event) {
     publishNoteQuizId = null;
     render();
   }
-  if (action === "view-quiz" || action === "edit-quiz") {
+  if (action === "view-quiz" || action === "edit-quiz" || action === "edit-quiz-title") {
     selectedQuizId = button.dataset.quizId;
     editorMode = "detail";
-    editorReadOnly = action !== "edit-quiz";
+    editorReadOnly = action === "view-quiz";
     if (editorReadOnly) editorSnapshot = null;
     else captureEditorSnapshot(selectedQuizId);
     render();
@@ -4780,6 +4802,7 @@ function handleInput(event) {
     const itemQuiz = quiz(selectedQuizId);
     const field = target.dataset.editorField;
     itemQuiz[field] = target.type === "number" ? Number(target.value) : target.value;
+    if (field === "title") syncQuizTitleInputs(itemQuiz.title, target);
     markQuizChanged(itemQuiz, null);
   }
   if (target.dataset.courseField) {
