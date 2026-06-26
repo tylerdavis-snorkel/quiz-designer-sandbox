@@ -225,9 +225,9 @@ a {
 }
 
 .topbar-heading {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
   min-width: 0;
 }
 
@@ -301,8 +301,9 @@ a {
 
 .topbar-meta {
   color: var(--muted);
-  font-size: 12px;
-  margin-top: 4px;
+  font-size: 14px;
+  font-weight: var(--weight-medium);
+  margin-top: 0;
 }
 
 .topbar-actions {
@@ -317,6 +318,11 @@ a {
   display: grid;
   justify-items: center;
   gap: 5px;
+}
+
+.topbar-brand-stack {
+  justify-items: start;
+  gap: 3px;
 }
 
 .tour-help-text {
@@ -2269,12 +2275,13 @@ tr:last-child td {
   background: var(--surface-3);
   color: var(--blue-dark);
   border: 1px solid var(--line);
+  overflow: hidden;
 }
 
 .audit-card-icon svg,
 .audit-dot svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
@@ -2298,10 +2305,11 @@ tr:last-child td {
   content: "";
   position: absolute;
   left: 19px;
-  top: 10px;
-  bottom: 12px;
+  top: 22px;
+  bottom: 22px;
   width: 2px;
   background: var(--line-strong);
+  z-index: 0;
 }
 
 .audit-timeline.full {
@@ -2325,6 +2333,8 @@ tr:last-child td {
 }
 
 .audit-dot {
+  position: relative;
+  z-index: 2;
   width: 40px;
   height: 40px;
   border-radius: 999px;
@@ -2332,36 +2342,37 @@ tr:last-child td {
   place-items: center;
   border: 1px solid currentColor;
   background: var(--surface);
+  box-shadow: 0 0 0 6px var(--surface);
 }
 
 .audit-dot.tone-blue {
   color: var(--blue-dark);
-  background: var(--blue-soft);
+  background: color-mix(in srgb, var(--blue-dark) 12%, var(--surface));
 }
 
 .audit-dot.tone-green {
   color: #087443;
-  background: #dff7ea;
+  background: color-mix(in srgb, #087443 13%, var(--surface));
 }
 
 .audit-dot.tone-purple {
-  color: #6941c6;
-  background: #eee6ff;
+  color: var(--blue-dark);
+  background: color-mix(in srgb, var(--blue-dark) 12%, var(--surface));
 }
 
 .audit-dot.tone-orange {
   color: #c2410c;
-  background: #ffead5;
+  background: color-mix(in srgb, #c2410c 14%, var(--surface));
 }
 
 .audit-dot.tone-red {
   color: var(--red);
-  background: #ffe3e5;
+  background: color-mix(in srgb, var(--red) 14%, var(--surface));
 }
 
 .audit-dot.tone-amber {
   color: var(--amber);
-  background: var(--amber-soft);
+  background: color-mix(in srgb, var(--amber) 16%, var(--surface));
 }
 
 .audit-event-copy {

@@ -1007,13 +1007,14 @@ function timestampLabel() {
     });
 }
 
-function addAudit(action, target) {
+function addAudit(action, target, details = {}) {
   state.audit.unshift({
     id: `au-${Date.now()}`,
     actor: currentUser()?.name || "Admin",
     action,
     target,
-    at: timestampLabel()
+    at: timestampLabel(),
+    ...details
   });
 }
 
@@ -1044,6 +1045,9 @@ function isQuizContentAudit(event) {
   return value.includes("quiz created")
     || value.includes("quiz duplicated")
     || value.includes("quiz deleted")
+    || value.includes("course created")
+    || value.includes("course template")
+    || value.includes("course package")
     || value.includes("assessment content")
     || value.includes("quiz version")
     || value.includes("quiz changes")
@@ -1072,7 +1076,7 @@ function quizAuditEvents(itemQuiz) {
   const title = String(itemQuiz.title || "").toLowerCase();
   return (state.audit || []).filter((event) => {
     const target = String(event.target || "").toLowerCase();
-    return isQuizContentAudit(event) && target.includes(title);
+    return isQuizContentAudit(event) && (event.quizId === itemQuiz.id || target.includes(title));
   });
 }
 
@@ -1282,38 +1286,22 @@ function render() {
 
 function renderShell(content) {
   const current = currentUser();
-  const title = {
-    contributor: "Contributor dashboard",
-    admin: "Contributor overview",
-    offboarding: "Offboarding",
-    editor: editorMode === "home" ? "Course library" : "Course builder",
-    analytics: "Quiz analytics"
-  }[view];
-  const subtitle = {
-    contributor: "Complete required assessments and review your history.",
-    admin: "Manage contributor qualifications and review quality.",
-    offboarding: "Manage contributor access to courses and quizzes.",
-    editor: editorMode === "home" ? "Create, manage, publish, and assign course content and knowledge checks." : "View course details, then edit when changes are needed.",
-    analytics: "Review question performance and score patterns."
-  }[view];
   return `
     <div class="app-shell">
       <main class="main">
         <header class="topbar">
           <div class="topbar-heading">
-            <div>
-              <div class="topbar-title">${escapeHtml(title)}</div>
-              <div class="topbar-subtitle">${escapeHtml(subtitle)}</div>
-              <div class="topbar-meta">${escapeHtml(current.name)} - ${escapeHtml(current.email)} - ${isAdmin(current) ? "Admin" : "Contributor"}</div>
-            </div>
-          </div>
-          <div class="topbar-actions">
-            <div class="brand-help-stack">
+            <div class="brand-help-stack topbar-brand-stack">
               <div class="brand-logo" aria-label="Snorkel">
                 <img src="https://s46486.pcdn.co/wp-content/uploads/2023/05/snorkel_logo_header-1.svg" alt="Snorkel">
               </div>
               ${isAdmin(current) ? `<button class="tour-help-text" data-action="start-admin-tour">Need help navigating?</button>` : ""}
             </div>
+            <div>
+              <div class="topbar-meta">${escapeHtml(current.name)} - ${escapeHtml(current.email)} - ${isAdmin(current) ? "Admin" : "Contributor"}</div>
+            </div>
+          </div>
+          <div class="topbar-actions">
             <select class="select" data-action="switch-contributor" aria-label="Current contributor">
               ${state.contributors.map((person) => `
                 <option value="${person.id}" ${person.id === state.currentContributorId ? "selected" : ""}>
@@ -1673,7 +1661,7 @@ function auditIconType(action) {
 
 function auditIconSvg(type) {
   const paths = {
-    log: `<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h5"/><path d="M9 16h4"/><circle cx="17" cy="17" r="3"/><path d="m19.2 19.2 1.8 1.8"/>`,
+    log: `<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M10 12h5"/><path d="M10 16h2"/><circle cx="16.5" cy="16.5" r="3"/><path d="M16.5 14.8v1.9l1.3.8"/>`,
     file: `<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M10 13h6"/><path d="M10 17h4"/>`,
     mail: `<rect x="4" y="6" width="16" height="12" rx="2"/><path d="m5 7 7 6 7-6"/>`,
     upload: `<path d="M7 17a4 4 0 0 1 1-7.9A5 5 0 0 1 18 10a3.5 3.5 0 0 1-.5 7H15"/><path d="M12 19V11"/><path d="m9 14 3-3 3 3"/>`,
@@ -1712,12 +1700,6 @@ function renderAdminReviewCallout() {
 function renderOffboarding() {
   return `
     <section class="content">
-      <div class="toolbar">
-        <div>
-          <h1 class="section-title">Offboarding</h1>
-          <div class="section-kicker">Manage contributor access to courses and quizzes.</div>
-        </div>
-      </div>
       ${renderOffboardingPanel()}
     </section>
   `;
@@ -1772,8 +1754,8 @@ function renderOffboardingPanel() {
     <div class="panel">
       <div class="panel-header">
         <div>
-          <h2 class="section-title small">Contributor access</h2>
-          <div class="section-kicker">Offboarded contributor quizzes will be disabled, but they can still view their scores.</div>
+          <h1 class="section-title">Offboarding</h1>
+          <div class="section-kicker">Disable course and quiz actions while keeping contributor scores visible.</div>
         </div>
       </div>
       <div class="panel-body">
@@ -3917,7 +3899,7 @@ async function importQuizPackage(file) {
   editorReadOnly = false;
   templateModalOpen = false;
   captureEditorSnapshot(copy.id);
-  addAudit("Course package uploaded", `${file.name} -> ${copy.title}`);
+  addAudit("Course package uploaded", `${file.name} -> ${copy.title}`, { quizId: copy.id });
   render();
 }
 
