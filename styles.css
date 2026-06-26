@@ -582,7 +582,7 @@ a {
 .quiz-card-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .quiz-card-title-row span {
@@ -590,11 +590,12 @@ a {
 }
 
 .title-pencil-button {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
   color: var(--muted);
   display: inline-grid;
   place-items: center;
@@ -605,6 +606,25 @@ a {
 .title-pencil-button:hover,
 .title-pencil-button:focus-visible {
   color: var(--blue-dark);
+  background: var(--surface-3);
+  outline: 0;
+}
+
+.library-title-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 17px;
+  font-weight: var(--weight-semibold);
+  line-height: 1.25;
+}
+
+.library-title-input:focus {
   border-color: var(--blue-dark);
   box-shadow: 0 0 0 3px var(--blue-soft);
   outline: 0;

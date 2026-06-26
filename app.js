@@ -368,6 +368,7 @@ let view = "contributor";
 let selectedQuizId = state.selectedQuizId || state.quizzes[0].id;
 let editorMode = "home";
 let editorReadOnly = true;
+let editingLibraryTitleId = null;
 let editorSnapshot = null;
 let versionHistoryQuizId = null;
 let selectedAttemptId = null;
@@ -1289,6 +1290,14 @@ function render() {
     analytics: renderAnalytics()
   }[view] || renderContributor();
   app.innerHTML = renderShell(content);
+  if (editingLibraryTitleId) {
+    requestAnimationFrame(() => {
+      const input = document.querySelector(`[data-library-title-field][data-quiz-id="${editingLibraryTitleId}"]`);
+      if (!input) return;
+      input.focus();
+      input.select();
+    });
+  }
   if (tourState.active) requestAnimationFrame(positionTourOverlay);
   saveState();
 }
@@ -2575,8 +2584,12 @@ function renderEditorHome() {
               <article class="quiz-card">
                 <div>
                   <h2 class="quiz-card-title quiz-card-title-row">
-                    <span>${escapeHtml(itemQuiz.title)}</span>
-                    <button class="title-pencil-button" type="button" data-action="edit-quiz-title" data-quiz-id="${itemQuiz.id}" aria-label="Edit course title">✎</button>
+                    ${editingLibraryTitleId === itemQuiz.id ? `
+                      <input class="library-title-input" value="${escapeHtml(itemQuiz.title)}" data-library-title-field data-quiz-id="${itemQuiz.id}" aria-label="Course title">
+                    ` : `
+                      <span>${escapeHtml(itemQuiz.title)}</span>
+                      <button class="title-pencil-button" type="button" data-action="edit-library-title" data-quiz-id="${itemQuiz.id}" aria-label="Edit course title">✎</button>
+                    `}
                   </h2>
                   <div class="quiz-card-meta">
                     <span class="status ${itemQuiz.draftDirty ? "retake-available" : itemQuiz.status === "Published" ? "qualified" : "submitted"}" data-dirty-badge="${itemQuiz.id}">${escapeHtml(itemQuiz.draftDirty ? "Unpublished changes" : itemQuiz.status)}</span>
@@ -4616,7 +4629,11 @@ function handleClick(event) {
     publishNoteQuizId = null;
     render();
   }
-  if (action === "view-quiz" || action === "edit-quiz" || action === "edit-quiz-title") {
+  if (action === "edit-library-title") {
+    editingLibraryTitleId = button.dataset.quizId;
+    render();
+  }
+  if (action === "view-quiz" || action === "edit-quiz") {
     selectedQuizId = button.dataset.quizId;
     editorMode = "detail";
     editorReadOnly = action === "view-quiz";
@@ -4788,6 +4805,12 @@ function handleInput(event) {
   if (target.dataset.filter) {
     filters[target.dataset.filter] = target.value;
     render();
+  }
+  if (target.dataset.libraryTitleField !== undefined) {
+    const itemQuiz = quiz(target.dataset.quizId);
+    if (!itemQuiz) return;
+    itemQuiz.title = target.value;
+    markQuizChanged(itemQuiz, null);
   }
   if (editorReadOnly && view === "editor" && editorMode === "detail" && (
     target.dataset.editorField ||
@@ -5115,6 +5138,12 @@ function changeResult(assignmentId) {
 }
 
 function handleKeydown(event) {
+  if (event.target?.dataset?.libraryTitleField !== undefined && ["Enter", "Escape"].includes(event.key)) {
+    event.preventDefault();
+    editingLibraryTitleId = null;
+    render();
+    return;
+  }
   if (event.key === "Escape" && tourState.active) {
     exitTour();
     render();
