@@ -1284,9 +1284,9 @@ tr:last-child td {
 .tour-spotlight {
   position: fixed;
   border: 2px solid var(--blue);
-  border-radius: 14px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--surface) 8%, transparent);
-  box-shadow: 0 0 0 9999px rgba(10, 18, 32, 0.62), 0 0 0 6px color-mix(in srgb, var(--blue) 18%, transparent);
+  box-shadow: 0 0 0 9999px rgba(10, 18, 32, 0.62), 0 0 0 4px color-mix(in srgb, var(--blue) 16%, transparent);
   transition: left 180ms ease, top 180ms ease, width 180ms ease, height 180ms ease, opacity 80ms ease;
   pointer-events: none;
 }
@@ -1393,6 +1393,16 @@ tr:last-child td {
 
 .tour-next:hover {
   filter: brightness(1.05);
+}
+
+.tour-next.is-done {
+  min-width: 72px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  background: var(--navy);
+  border-color: var(--navy);
+  font-size: 14px;
 }
 
 .tour-arrow {

@@ -1140,7 +1140,7 @@ function renderTourOverlay() {
           <button class="tour-text-button" data-action="exit-tour">Exit</button>
           <div class="tour-card-controls">
             <button class="tour-text-button" data-action="previous-tour-step" ${isFirst ? "disabled" : ""}>Back</button>
-            <button class="tour-next" data-action="next-tour-step" aria-label="${isLast ? "Finish tour" : "Next tour step"}">${isLast ? "Done" : "→"}</button>
+            <button class="tour-next ${isLast ? "is-done" : ""}" data-action="next-tour-step" aria-label="${isLast ? "Finish tour" : "Next tour step"}">${isLast ? "Done" : "→"}</button>
           </div>
         </div>
       </aside>
@@ -1175,7 +1175,8 @@ function positionTourOverlay() {
   target.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
   requestAnimationFrame(() => {
     const rect = target.getBoundingClientRect();
-    const padding = 10;
+    const compactTargets = new Set(["bulk-retake", "start-template", "create-blank-course"]);
+    const padding = compactTargets.has(targetName) ? 4 : 10;
     const left = Math.max(12, rect.left - padding);
     const top = Math.max(12, rect.top - padding);
     const width = Math.min(window.innerWidth - left - 12, rect.width + padding * 2);
