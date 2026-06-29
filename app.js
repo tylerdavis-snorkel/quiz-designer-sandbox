@@ -648,6 +648,13 @@ const ADMIN_TOUR_STEPS = [
   {
     view: "admin",
     subtab: "responses",
+    target: "sandbox-view-switcher",
+    title: "Sandbox view switcher",
+    body: "Use this dropdown to switch between sample accounts while testing. Maya is the admin view, Alex is an active contributor, and Nia is an offboarded contributor with score-only history."
+  },
+  {
+    view: "admin",
+    subtab: "responses",
     target: "contributor-log-title",
     title: "Contributor log",
     body: "Review contributor activity such as retake changes, locks, scoring updates, notes, and attempt reviews."
@@ -1335,7 +1342,7 @@ function renderShell(content) {
             </div>
           </div>
           <div class="topbar-actions">
-            <select class="select" data-action="switch-contributor" aria-label="Current contributor">
+            <select class="select" data-action="switch-contributor" data-tour="sandbox-view-switcher" aria-label="Current contributor">
               ${state.contributors.map((person) => `
                 <option value="${person.id}" ${person.id === state.currentContributorId ? "selected" : ""}>
                   ${escapeHtml(person.name)} (${person.role === "admin" ? "Admin" : "Contributor"})
