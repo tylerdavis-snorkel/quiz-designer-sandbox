@@ -650,93 +650,101 @@ const ADMIN_TOUR_STEPS = [
     subtab: "responses",
     target: "contributor-log-title",
     title: "Contributor log",
-    body: "This log shows contributor quiz activity for the current admin view, including retake changes, locks, scoring updates, notes, and attempt review actions."
+    body: "Review contributor activity such as retake changes, locks, scoring updates, notes, and attempt reviews."
+  },
+  {
+    view: "admin",
+    subtab: "responses",
+    target: "admin-access-modal",
+    modal: "admin-access",
+    title: "Admin access",
+    body: "Add team members by email and manage who has Admin access to this project."
   },
   {
     view: "admin",
     subtab: "written",
     target: "admin-review-tab",
     title: "Admin review",
-    body: "Admin review is where long written responses wait for scoring. This tour opens the tab briefly so admins can see where those pending reviews live."
+    body: "Long written responses that need scoring appear here."
   },
   {
     view: "admin",
     subtab: "responses",
     target: "bulk-retake",
     title: "Bulk retake",
-    body: "Bulk retake lets an admin grant retakes to comma-separated emails and reset active course progress for the selected course or quiz."
+    body: "Grant retakes to comma-separated emails and reset active course progress for the selected course."
   },
   {
     view: "admin",
     subtab: "responses",
     target: "contributor-queue",
     title: "Contributor queue",
-    body: "The queue is the main operating table for contributor status, scores, active time, attempt dates, retakes, and attempt review."
+    body: "Review contributor status, scores, active time, attempt dates, retakes, and attempts."
   },
   {
     view: "admin",
     subtab: "responses",
     target: "retakes-column",
     title: "Retakes",
-    body: "Retakes can be adjusted directly in the row. When the count changes, a save action appears only for that contributor and course."
+    body: "Adjust retakes directly in the row. Save appears only when that count changes."
   },
   {
     view: "admin",
     subtab: "responses",
     target: "view-attempt",
     title: "View attempt",
-    body: "View attempt opens the attempt details popup, including score, active time, answers, admin controls, and internal notes."
+    body: "Open attempt details, including score, active time, answers, controls, and internal notes."
   },
   {
     view: "offboarding",
     target: "bulk-offboard",
     title: "Bulk offboard",
-    body: "Bulk offboard accepts comma-separated emails and disables course and quiz actions for those contributors while keeping scores visible."
+    body: "Offboard contributors by comma-separated email. Course actions are disabled while scores remain visible."
   },
   {
     view: "offboarding",
     target: "offboard-restore-action",
     demo: "active",
     title: "Offboard action",
-    body: "This temporary sample row shows where an admin would offboard a contributor. The sample is only part of the tour and is not saved."
+    body: "Use Offboard to disable course and quiz actions for a contributor."
   },
   {
     view: "offboarding",
     target: "offboard-restore-action",
     demo: "offboarded",
     title: "Restore action",
-    body: "After offboarding, the same row changes to Restore. The temporary log preview shows what would be recorded without changing real data."
+    body: "Use Restore to give an offboarded contributor access again."
   },
   {
     view: "offboarding",
     target: "offboarding-log-title",
     demo: "restored",
     title: "Offboarding log",
-    body: "The log tracks both offboarding and restored access. These tour entries are examples only and disappear when the tour moves on."
+    body: "Tracks offboarding and restored access."
   },
   {
     view: "editor",
     target: "start-template",
     title: "Start from template",
-    body: "Templates give admins a course-only, quiz-only, or course-plus-quiz starting point so they do not have to build from a blank page."
+    body: "Start with a course-only, quiz-only, or course-plus-quiz structure."
   },
   {
     view: "editor",
     target: "create-blank-course",
     title: "Create blank course",
-    body: "Create blank course starts a clean course shell for admins who already know the structure they want."
+    body: "Create a clean course shell when you already know the structure."
   },
   {
     view: "editor",
     target: "view-edit-course",
     title: "View/Edit",
-    body: "View/Edit opens the course in read-only mode first. Click Edit inside the course builder before making content, question, or assignment changes."
+    body: "Open a course in read-only mode, then click Edit to change content, questions, or assignment settings."
   },
   {
     view: "editor",
     target: "preview-course",
     title: "Preview",
-    body: "Preview lets admins see the course and quiz as a contributor before publishing or assigning it."
+    body: "Preview the course and quiz as a contributor."
   },
   {
     view: "editor",
@@ -748,13 +756,13 @@ const ADMIN_TOUR_STEPS = [
     view: "analytics",
     target: "analytics-overview",
     title: "Overview",
-    body: "Analytics starts with a selected course or all courses, then summarizes passed, failed, in progress, and not started counts."
+    body: "Select a course to summarize passed, failed, in progress, and not started counts."
   },
   {
     view: "analytics",
     target: null,
     title: "Question status",
-    body: "Healthy means a question is performing normally. May need revision means the miss rate is high enough that an admin may want to inspect the wording, answer choices, or training content."
+    body: "Healthy means a question is performing normally. May need revision means the miss rate is high enough to review wording, answer choices, or training content."
   }
 ];
 
@@ -1129,6 +1137,9 @@ function syncTourView() {
     selectedQuizId = quiz(selectedQuizId)?.id || state.quizzes[0]?.id || selectedQuizId;
     filters.metricQuiz = selectedQuizId;
   }
+  if (step.modal === "admin-access") {
+    makeAdminOpen = true;
+  }
 }
 
 function startAdminTour() {
@@ -1163,6 +1174,10 @@ function previousTourStep() {
 function exitTour() {
   tourState = { active: false, index: 0 };
   setTourTransition(false);
+  makeAdminOpen = false;
+  bulkRetakeOpen = false;
+  auditLogOpen = false;
+  templateModalOpen = false;
 }
 
 function renderTourOverlay() {
@@ -1729,7 +1744,7 @@ function tourOffboardingExampleEvents() {
   const base = {
     email: "jordan.sample@example.com",
     actor: currentUser()?.name || "Admin",
-    at: "Tour example"
+    at: "Example"
   };
   if (demo === "offboarded") {
     return [{ ...base, action: "Offboarded", name: "Jordan Sample" }];
@@ -1748,7 +1763,7 @@ function renderTourOffboardingRow() {
     <tr class="tour-demo-row">
       <td>
         <div class="cell-title">Jordan Sample</div>
-        <div class="cell-sub">jordan.sample@example.com - Tour example only</div>
+        <div class="cell-sub">jordan.sample@example.com - Example contributor</div>
       </td>
       <td><span class="status ${isOffboarded ? "offboarded" : "passed"}">${isOffboarded ? "Offboarded" : "Active"}</span></td>
       <td>3</td>
@@ -2003,7 +2018,7 @@ function renderAdminAccessModal() {
   const accessEvents = adminAccessAuditEvents();
   return `
     <div class="modal-backdrop" data-modal-backdrop="make-admin">
-      <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="admin-access-title">
+      <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="admin-access-title" data-tour="admin-access-modal">
         <div class="modal-header">
         <div>
             <h2 id="admin-access-title" class="section-title small">Admin access</h2>
@@ -2023,8 +2038,8 @@ function renderAdminAccessModal() {
           <div class="admin-access-section">
             <div class="table-section-heading">
               <div>
-                <div class="strong">Current admins</div>
-                <div class="cell-sub">${admins.length} admin${admins.length === 1 ? "" : "s"} have access.</div>
+                <div class="strong">Current users</div>
+                <div class="cell-sub">${admins.length} user${admins.length === 1 ? "" : "s"} with Admin access.</div>
               </div>
             </div>
             <div class="admin-access-list">
@@ -5150,8 +5165,20 @@ function handleKeydown(event) {
   }
 }
 
+function handleFocusOut(event) {
+  if (event.target?.dataset?.libraryTitleField === undefined) return;
+  const closingQuizId = editingLibraryTitleId;
+  window.setTimeout(() => {
+    if (!closingQuizId || editingLibraryTitleId !== closingQuizId) return;
+    if (document.activeElement?.dataset?.libraryTitleField !== undefined) return;
+    editingLibraryTitleId = null;
+    render();
+  }, 0);
+}
+
 document.addEventListener("click", handleClick);
 document.addEventListener("keydown", handleKeydown);
+document.addEventListener("focusout", handleFocusOut);
 document.addEventListener("input", handleInput);
 document.addEventListener("change", handleChange);
 document.addEventListener("dragstart", handleDragStart);
